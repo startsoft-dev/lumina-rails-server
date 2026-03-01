@@ -1,0 +1,620 @@
+# frozen_string_literal: true
+
+module Lumina
+  # Global CRUD controller that handles all registered models.
+  # Mirrors the Laravel GlobalController exactly.
+  #
+  # Routes pass the model slug via route defaults, and this controller
+  # resolves the appropriate ActiveRecord class to operate on.
+  class ResourcesController < ActionController::API
+    include Pundit::Authorization
+
+    before_action :set_model_class
+    before_action :authenticate_user!, unless: :public_model?
+
+    # GET /api/{slug}
+    def index
+      authorize model_class, :index?, policy_class: policy_for(model_class)
+
+      builder = QueryBuilder.new(model_class, params: params)
+      apply_organization_scope(builder)
+      builder.build
+
+      per_page = params[:per_page]
+      pagination_enabled = model_class.try(:pagination_enabled) || false
+
+      if per_page.present? || pagination_enabled
+        result = builder.paginate
+        set_pagination_headers(result[:pagination])
+        render json: serialize_collection(result[:items])
+      else
+        render json: serialize_collection(builder.to_scope)
+      end
+    end
+
+    # POST /api/{slug}
+    def store
+      authorize model_class, :create?, policy_class: policy_for(model_class)
+
+      model_instance = model_class.new
+      validation = model_instance.validate_store(
+        params_hash,
+        user: current_user,
+        organization: current_organization
+      )
+
+      unless validation[:valid]
+        return render json: { errors: validation[:errors] }, status: :unprocessable_entity
+      end
+
+      data = validation[:validated]
+      add_organization_to_data(data)
+
+      record = model_class.create!(data)
+      render json: serialize_record(record), status: :created
+    end
+
+    # GET /api/{slug}/:id
+    def show
+      record = find_record
+      authorize record, :show?, policy_class: policy_for(record)
+
+      # Apply includes if requested
+      if params[:include].present?
+        auth_response = authorize_includes
+        return auth_response if auth_response
+
+        builder = QueryBuilder.new(model_class, params: params)
+        builder.instance_variable_set(:@scope, model_class.where(id: record.id))
+        apply_organization_scope(builder)
+        builder.build
+        record = builder.to_scope.first!
+      end
+
+      render json: serialize_record(record)
+    end
+
+    # PUT /api/{slug}/:id
+    def update
+      record = find_record
+      authorize record, :update?, policy_class: policy_for(record)
+
+      model_instance = model_class.new
+      validation = model_instance.validate_update(
+        params_hash,
+        user: current_user,
+        organization: current_organization
+      )
+
+      unless validation[:valid]
+        return render json: { errors: validation[:errors] }, status: :unprocessable_entity
+      end
+
+      record.update!(validation[:validated])
+      record.reload
+
+      render json: serialize_record(record)
+    end
+
+    # DELETE /api/{slug}/:id
+    def destroy
+      record = find_record
+      authorize record, :destroy?, policy_class: policy_for(record)
+
+      if record.respond_to?(:discard!)
+        record.discard!
+      else
+        record.destroy!
+      end
+
+      head :no_content
+    end
+
+    # ------------------------------------------------------------------
+    # Soft Delete Endpoints
+    # ------------------------------------------------------------------
+
+    # GET /api/{slug}/trashed
+    def trashed
+      authorize model_class, :view_trashed?, policy_class: policy_for(model_class)
+
+      builder = QueryBuilder.new(model_class.discarded, params: params)
+      apply_organization_scope(builder)
+      builder.build
+
+      per_page = params[:per_page]
+      pagination_enabled = model_class.try(:pagination_enabled) || false
+
+      if per_page.present? || pagination_enabled
+        result = builder.paginate
+        set_pagination_headers(result[:pagination])
+        render json: serialize_collection(result[:items])
+      else
+        render json: serialize_collection(builder.to_scope)
+      end
+    end
+
+    # POST /api/{slug}/:id/restore
+    def restore
+      record = model_class.discarded.find(params[:id])
+      authorize record, :restore?, policy_class: policy_for(record)
+
+      record.undiscard!
+      record.reload
+
+      render json: serialize_record(record)
+    end
+
+    # DELETE /api/{slug}/:id/force-delete
+    def force_delete
+      record = model_class.discarded.find(params[:id])
+      authorize record, :force_delete?, policy_class: policy_for(record)
+
+      record.destroy!
+
+      head :no_content
+    end
+
+    # ------------------------------------------------------------------
+    # Nested Operations
+    # ------------------------------------------------------------------
+
+    # POST /api/nested
+    def nested
+      operations = validate_nested_structure
+      return if performed?
+
+      nested_config = Lumina.config.nested
+      max_ops = nested_config[:max_operations]
+
+      if max_ops && operations.length > max_ops
+        return render json: {
+          message: "Too many operations.",
+          errors: { operations: ["Maximum #{max_ops} operations allowed."] }
+        }, status: :unprocessable_entity
+      end
+
+      allowed_models = nested_config[:allowed_models]
+      if allowed_models.is_a?(Array)
+        operations.each_with_index do |op, index|
+          unless allowed_models.include?(op["model"])
+            return render json: {
+              message: "Operation not allowed.",
+              errors: { "operations.#{index}.model" => ["Model \"#{op['model']}\" is not allowed for nested operations."] }
+            }, status: :unprocessable_entity
+          end
+        end
+      end
+
+      # Validate and authorize each operation
+      validated_per_op = []
+      auth_results = []
+
+      operations.each_with_index do |operation, index|
+        validated = validate_nested_operation(operation, index)
+        return if performed?
+        validated_per_op << validated
+
+        auth_result = authorize_nested_operation(operation, validated, index)
+        return if performed?
+        auth_results << auth_result
+      end
+
+      # Execute all operations in a transaction
+      results = execute_nested_operations(operations, validated_per_op, auth_results)
+      render json: { results: results }
+    end
+
+    private
+
+    # ------------------------------------------------------------------
+    # Model resolution
+    # ------------------------------------------------------------------
+
+    def set_model_class
+      slug = params[:model_slug] || request.env["lumina.model_slug"]
+      @model_class = Lumina.config.resolve_model(slug)
+    rescue ActiveRecord::RecordNotFound => e
+      render json: { message: e.message }, status: :not_found
+    end
+
+    def model_class
+      @model_class
+    end
+
+    def model_slug
+      params[:model_slug] || request.env["lumina.model_slug"]
+    end
+
+    # ------------------------------------------------------------------
+    # Authentication
+    # ------------------------------------------------------------------
+
+    def public_model?
+      Lumina.config.public_model?(model_slug)
+    end
+
+    def authenticate_user!
+      unless current_user
+        render json: { message: "Unauthenticated." }, status: :unauthorized
+      end
+    end
+
+    def current_user
+      # Override in host app or use token auth
+      @current_user ||= begin
+        token = request.headers["Authorization"]&.sub(/\ABearer /, "")
+        return nil unless token
+
+        # Look for user by API token
+        user_class = "User".safe_constantize
+        return nil unless user_class
+
+        if user_class.respond_to?(:find_by_api_token)
+          user_class.find_by_api_token(token)
+        elsif user_class.column_names.include?("api_token")
+          user_class.find_by(api_token: token)
+        end
+      end
+    end
+
+    # ------------------------------------------------------------------
+    # Organization (multi-tenant)
+    # ------------------------------------------------------------------
+
+    def current_organization
+      request.env["lumina.organization"]
+    end
+
+    def apply_organization_scope(builder)
+      return unless Lumina.config.multi_tenant_enabled?
+
+      org = current_organization
+      return unless org
+
+      # When the resource IS the Organization model
+      if org.class == model_class
+        builder.instance_variable_set(
+          :@scope,
+          builder.scope.where(model_class.primary_key => org.send(model_class.primary_key))
+        )
+        return
+      end
+
+      # Check for scopeForOrganization
+      if model_class.respond_to?(:for_organization)
+        builder.instance_variable_set(:@scope, model_class.for_organization(org))
+        return
+      end
+
+      # Check for organization_id column
+      if model_class.column_names.include?("organization_id")
+        builder.instance_variable_set(
+          :@scope,
+          builder.scope.where(organization_id: org.id)
+        )
+        return
+      end
+
+      # Check for explicit owner property
+      owner_path = model_class.try(:lumina_owner_path)
+      if owner_path.present?
+        apply_organization_scope_through_relationship(builder, org, owner_path)
+      end
+    end
+
+    def apply_organization_scope_through_relationship(builder, organization, relationship_path)
+      if relationship_path.include?(".")
+        # Nested path: 'post.blog' -> joins(post: :blog).where(blogs: { organization_id: org.id })
+        parts = relationship_path.split(".")
+        join_chain = parts.reverse.inject(:organization) { |inner, outer| { outer.to_sym => inner } }
+
+        builder.instance_variable_set(
+          :@scope,
+          builder.scope.joins(join_chain.is_a?(Symbol) ? join_chain : parts.first.to_sym => join_chain)
+                       .where(organizations: { id: organization.id })
+        )
+      else
+        # Single relationship
+        assoc = model_class.reflect_on_association(relationship_path.to_sym)
+        return unless assoc
+
+        if assoc.klass.column_names.include?("organization_id")
+          builder.instance_variable_set(
+            :@scope,
+            builder.scope.joins(relationship_path.to_sym)
+                         .where(assoc.klass.table_name => { organization_id: organization.id })
+          )
+        end
+      end
+    end
+
+    def add_organization_to_data(data)
+      return unless Lumina.config.multi_tenant_enabled?
+
+      org = current_organization
+      return unless org
+
+      if model_class.column_names.include?("organization_id")
+        data["organization_id"] = org.id
+      end
+    end
+
+    # ------------------------------------------------------------------
+    # Record finding
+    # ------------------------------------------------------------------
+
+    def find_record
+      scope = model_class.all
+
+      if Lumina.config.multi_tenant_enabled? && current_organization
+        org = current_organization
+        if model_class.column_names.include?("organization_id")
+          scope = scope.where(organization_id: org.id)
+        end
+      end
+
+      scope.find(params[:id])
+    end
+
+    # ------------------------------------------------------------------
+    # Include authorization
+    # ------------------------------------------------------------------
+
+    def authorize_includes
+      include_param = params[:include]
+      return nil unless include_param.present?
+
+      allowed = model_class.try(:allowed_includes) || []
+      return nil if allowed.empty?
+
+      requested = include_param.to_s.split(",").map(&:strip)
+
+      requested.each do |include_path|
+        segments = include_path.split(".")
+        current_model = model_class
+
+        segments.each do |segment|
+          base = resolve_base_include_segment(segment, allowed)
+          next unless base
+
+          assoc = current_model.reflect_on_association(base.to_sym)
+          next unless assoc
+
+          related_class = assoc.klass
+          policy = policy_for(related_class)
+
+          begin
+            unless policy.new(current_user, related_class).index?
+              render json: {
+                message: "You do not have permission to include #{include_path}."
+              }, status: :forbidden
+              return true
+            end
+          rescue StandardError
+            # If policy check fails, deny
+            render json: {
+              message: "You do not have permission to include #{include_path}."
+            }, status: :forbidden
+            return true
+          end
+
+          current_model = related_class
+        end
+      end
+
+      nil
+    end
+
+    def resolve_base_include_segment(segment, allowed)
+      return segment if allowed.include?(segment)
+
+      if segment.end_with?("Count")
+        base = segment.sub(/Count\z/, "")
+        return base if allowed.include?(base)
+      end
+
+      if segment.end_with?("Exists")
+        base = segment.sub(/Exists\z/, "")
+        return base if allowed.include?(base)
+      end
+
+      nil
+    end
+
+    # ------------------------------------------------------------------
+    # Serialization
+    # ------------------------------------------------------------------
+
+    def serialize_record(record)
+      if record.respond_to?(:as_lumina_json)
+        record.as_lumina_json(current_user)
+      else
+        record.as_json
+      end
+    end
+
+    def serialize_collection(records)
+      records.map { |r| serialize_record(r) }
+    end
+
+    # ------------------------------------------------------------------
+    # Pagination headers
+    # ------------------------------------------------------------------
+
+    def set_pagination_headers(pagination)
+      response.headers["X-Current-Page"] = pagination[:current_page].to_s
+      response.headers["X-Last-Page"] = pagination[:last_page].to_s
+      response.headers["X-Per-Page"] = pagination[:per_page].to_s
+      response.headers["X-Total"] = pagination[:total].to_s
+    end
+
+    # ------------------------------------------------------------------
+    # Policy resolution
+    # ------------------------------------------------------------------
+
+    def policy_for(record_or_class)
+      klass = record_or_class.is_a?(Class) ? record_or_class : record_or_class.class
+
+      # Try to find a specific policy (e.g., PostPolicy)
+      policy_name = "#{klass.name}Policy"
+      policy_class = policy_name.safe_constantize
+
+      # Fall back to Lumina::ResourcePolicy
+      policy_class || Lumina::ResourcePolicy
+    end
+
+    # ------------------------------------------------------------------
+    # Nested operations helpers
+    # ------------------------------------------------------------------
+
+    def validate_nested_structure
+      data = params.to_unsafe_h
+      operations = data["operations"]
+
+      unless operations.is_a?(Array)
+        render json: {
+          message: "The operations field is required and must be an array.",
+          errors: { operations: ["The operations field is required and must be an array."] }
+        }, status: :unprocessable_entity
+        return nil
+      end
+
+      operations.each_with_index do |op, index|
+        unless op.is_a?(Hash)
+          render json: {
+            message: "Invalid structure.",
+            errors: { "operations.#{index}" => ["Each operation must be an object."] }
+          }, status: :unprocessable_entity
+          return nil
+        end
+
+        if op["model"].blank?
+          render json: {
+            message: "Invalid structure.",
+            errors: { "operations.#{index}.model" => ["The model field is required."] }
+          }, status: :unprocessable_entity
+          return nil
+        end
+
+        unless %w[create update].include?(op["action"])
+          render json: {
+            message: "Invalid structure.",
+            errors: { "operations.#{index}.action" => ["The action must be create or update."] }
+          }, status: :unprocessable_entity
+          return nil
+        end
+
+        unless op["data"].is_a?(Hash)
+          render json: {
+            message: "Invalid structure.",
+            errors: { "operations.#{index}.data" => ["The data field is required and must be an object."] }
+          }, status: :unprocessable_entity
+          return nil
+        end
+
+        if op["action"] == "update" && !op.key?("id")
+          render json: {
+            message: "Invalid structure.",
+            errors: { "operations.#{index}.id" => ["The id field is required for update operations."] }
+          }, status: :unprocessable_entity
+          return nil
+        end
+      end
+
+      operations
+    end
+
+    def validate_nested_operation(operation, index)
+      slug = operation["model"]
+      op_model_class = begin
+        Lumina.config.resolve_model(slug)
+      rescue ActiveRecord::RecordNotFound
+        render json: {
+          message: "Unknown model.",
+          errors: { "operations.#{index}.model" => ["The model \"#{slug}\" does not exist."] }
+        }, status: :unprocessable_entity
+        return nil
+      end
+
+      model_instance = op_model_class.new
+
+      if operation["action"] == "create"
+        validation = model_instance.validate_store(operation["data"], user: current_user, organization: current_organization)
+      else
+        validation = model_instance.validate_update(operation["data"], user: current_user, organization: current_organization)
+      end
+
+      unless validation[:valid]
+        errors = {}
+        validation[:errors].each do |key, messages|
+          errors["operations.#{index}.data.#{key}"] = messages
+        end
+        render json: { message: "Validation failed.", errors: errors }, status: :unprocessable_entity
+        return nil
+      end
+
+      validation[:validated]
+    end
+
+    def authorize_nested_operation(operation, _validated, _index)
+      slug = operation["model"]
+      op_model_class = Lumina.config.resolve_model(slug)
+      policy = policy_for(op_model_class)
+
+      if operation["action"] == "create"
+        unless policy.new(current_user, op_model_class).create?
+          render json: { message: "This action is unauthorized." }, status: :forbidden
+          return nil
+        end
+        nil
+      else
+        record = op_model_class.find(operation["id"])
+        unless policy.new(current_user, record).update?
+          render json: { message: "This action is unauthorized." }, status: :forbidden
+          return nil
+        end
+        record
+      end
+    end
+
+    def execute_nested_operations(operations, validated_per_op, auth_results)
+      results = []
+
+      ActiveRecord::Base.transaction do
+        operations.each_with_index do |op, index|
+          validated = validated_per_op[index]
+          model_or_nil = auth_results[index]
+
+          if op["action"] == "create"
+            op_model_class = Lumina.config.resolve_model(op["model"])
+            data = validated.dup
+            add_organization_to_data(data)
+            record = op_model_class.create!(data)
+            results << {
+              model: op["model"],
+              action: "create",
+              id: record.id,
+              data: serialize_record(record)
+            }
+          else
+            model_or_nil.update!(validated)
+            model_or_nil.reload
+            results << {
+              model: op["model"],
+              action: "update",
+              id: model_or_nil.id,
+              data: serialize_record(model_or_nil)
+            }
+          end
+        end
+      end
+
+      results
+    end
+
+    def params_hash
+      params.except(:controller, :action, :model_slug, :id, :format).to_unsafe_h
+    end
+  end
+end

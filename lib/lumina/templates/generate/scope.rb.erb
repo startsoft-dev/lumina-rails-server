@@ -1,0 +1,23 @@
+# frozen_string_literal: true
+
+module ModelScopes
+  class <%= name %>Scope
+    # Apply custom scopes to the <%= table_name %> query.
+    #
+    # This scope is auto-detected by Lumina::HasAutoScope when included.
+    # It will be applied to all queries for this model.
+    #
+    # @param scope [ActiveRecord::Relation] the current query scope
+    # @param params [Hash] the request parameters
+    # @return [ActiveRecord::Relation] the modified scope
+    def self.apply(scope, params = {})
+      # Uncomment and customize your filter logic:
+      #
+      # if params[:status].present?
+      #   scope = scope.where(status: params[:status])
+      # end
+
+      scope
+    end
+  end
+end

@@ -1,0 +1,36 @@
+# frozen_string_literal: true
+
+class <%= name %>Policy < Lumina::ResourcePolicy
+  # Override any method for custom authorization logic.
+  # Call super to compose with the default permission check.
+  #
+  # Example:
+  #   def update?(user, record)
+  #     super && record.user_id == user.id
+  #   end
+
+  # def index?
+  #   super
+  # end
+
+  # def show?
+  #   super
+  # end
+
+  # def create?
+  #   super
+  # end
+
+  # def update?
+  #   super
+  # end
+
+  # def destroy?
+  #   super
+  # end
+
+  # Define additional columns to hide based on the authenticated user.
+  # def hidden_columns(user)
+  #   []
+  # end
+end
