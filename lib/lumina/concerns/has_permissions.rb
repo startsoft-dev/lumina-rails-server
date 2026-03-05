@@ -15,6 +15,10 @@ module Lumina
   # Wildcard support:
   #   - '*' grants access to everything
   #   - 'posts.*' grants access to all actions on posts
+  #
+  # Global permissions fallback:
+  #   Users without organization-scoped roles can have a `global_permissions`
+  #   JSON attribute on the user model for non-org-scoped authorization.
   module HasPermissions
     extend ActiveSupport::Concern
 
@@ -27,23 +31,22 @@ module Lumina
       return false if permission.blank?
 
       user_role = find_user_role(organization)
-      return false unless user_role
 
-      role = user_role.respond_to?(:role) ? user_role.role : nil
-      return false unless role
+      if user_role
+        role = user_role.respond_to?(:role) ? user_role.role : nil
+        return false unless role
 
-      permissions = role_permissions(role)
-      return false if permissions.blank?
+        permissions = role_permissions(role)
+        return false if permissions.blank?
 
-      # Check exact match
-      return true if permissions.include?(permission)
+        return matches_permission?(permission, permissions)
+      end
 
-      # Check wildcard: '*' grants all
-      return true if permissions.include?("*")
-
-      # Check resource wildcard: 'posts.*' grants all actions on posts
-      resource = permission.split(".").first
-      return true if permissions.include?("#{resource}.*")
+      # Fallback: check global_permissions when no org context and no user_roles found
+      if !organization && has_global_permissions?
+        global_perms = parse_global_permissions
+        return matches_permission?(permission, global_perms)
+      end
 
       false
     end
@@ -64,6 +67,37 @@ module Lumina
 
     private
 
+    def matches_permission?(permission, granted_permissions)
+      return true if granted_permissions.include?(permission)
+      return true if granted_permissions.include?("*")
+
+      resource = permission.split(".").first
+      return true if granted_permissions.include?("#{resource}.*")
+
+      false
+    end
+
+    def has_global_permissions?
+      respond_to?(:global_permissions) && !global_permissions.nil?
+    end
+
+    def parse_global_permissions
+      perms = global_permissions
+      return [] if perms.blank?
+
+      if perms.is_a?(String)
+        begin
+          JSON.parse(perms)
+        rescue JSON::ParserError
+          []
+        end
+      elsif perms.is_a?(Array)
+        perms
+      else
+        []
+      end
+    end
+
     def find_user_role(organization)
       return nil unless respond_to?(:user_roles)
 
@@ -80,7 +114,6 @@ module Lumina
       perms = role.permissions
       return [] if perms.blank?
 
-      # Handle both JSON string and array
       if perms.is_a?(String)
         begin
           JSON.parse(perms)

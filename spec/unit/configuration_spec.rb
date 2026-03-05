@@ -8,8 +8,8 @@ RSpec.describe Lumina::Configuration do
   describe "#initialize" do
     it "sets default values" do
       expect(config.models).to eq({})
-      expect(config.public_models).to eq([])
-      expect(config.multi_tenant[:enabled]).to eq(false)
+      expect(config.route_groups).to eq({})
+      expect(config.multi_tenant[:organization_identifier_column]).to eq("id")
       expect(config.invitations[:expires_days]).to eq(7)
       expect(config.nested[:max_operations]).to eq(50)
       expect(config.test_framework).to eq("rspec")
@@ -28,30 +28,46 @@ RSpec.describe Lumina::Configuration do
     end
   end
 
-  describe "#public_model" do
-    it "marks a model as public" do
-      config.public_model :posts
-      expect(config.public_models).to include(:posts)
+  describe "#route_group" do
+    it "registers a route group with configuration" do
+      config.route_group :tenant, prefix: ":organization", middleware: ["SomeMiddleware"], models: :all
+      expect(config.route_groups[:tenant]).to eq({
+        prefix: ":organization",
+        middleware: ["SomeMiddleware"],
+        models: :all
+      })
     end
 
-    it "accepts multiple slugs" do
-      config.public_model :posts, :comments
-      expect(config.public_models).to include(:posts, :comments)
+    it "defaults to empty prefix, no middleware, and all models" do
+      config.route_group :default
+      expect(config.route_groups[:default]).to eq({
+        prefix: "",
+        middleware: [],
+        models: :all
+      })
+    end
+
+    it "accepts array of model slugs" do
+      config.route_group :driver, prefix: "driver", models: [:trips, :trucks]
+      expect(config.route_groups[:driver][:models]).to eq([:trips, :trucks])
     end
   end
 
   describe "#public_model?" do
-    it "returns true for public models" do
-      config.public_model :posts
+    it "returns true for models in public route group" do
+      config.model :posts, "Post"
+      config.route_group :public, prefix: "public", models: [:posts]
       expect(config.public_model?(:posts)).to be true
     end
 
-    it "returns false for non-public models" do
+    it "returns false when no public route group exists" do
+      config.model :posts, "Post"
       expect(config.public_model?(:posts)).to be false
     end
 
     it "converts string slugs to symbols" do
-      config.public_model :posts
+      config.model :posts, "Post"
+      config.route_group :public, prefix: "public", models: [:posts]
       expect(config.public_model?("posts")).to be true
     end
   end
@@ -92,38 +108,72 @@ RSpec.describe Lumina::Configuration do
     end
   end
 
-  describe "#multi_tenant_enabled?" do
+  describe "#has_tenant_group?" do
     it "returns false by default" do
-      expect(config.multi_tenant_enabled?).to be false
+      expect(config.has_tenant_group?).to be false
     end
 
-    it "returns true when enabled" do
-      config.multi_tenant[:enabled] = true
-      expect(config.multi_tenant_enabled?).to be true
+    it "returns true when tenant group is configured" do
+      config.route_group :tenant, prefix: ":organization"
+      expect(config.has_tenant_group?).to be true
     end
   end
 
-  describe "#use_subdomain?" do
+  describe "#has_public_group?" do
     it "returns false by default" do
-      expect(config.use_subdomain?).to be false
+      expect(config.has_public_group?).to be false
+    end
+
+    it "returns true when public group is configured" do
+      config.route_group :public, prefix: "public"
+      expect(config.has_public_group?).to be true
     end
   end
 
-  describe "#needs_org_prefix?" do
-    it "returns false when multi-tenant is disabled" do
-      expect(config.needs_org_prefix?).to be false
+  describe "#models_for_group" do
+    before do
+      config.model :posts, "Post"
+      config.model :blogs, "Blog"
     end
 
-    it "returns true when multi-tenant is enabled without subdomain" do
-      config.multi_tenant[:enabled] = true
-      config.multi_tenant[:use_subdomain] = false
-      expect(config.needs_org_prefix?).to be true
+    it "returns all models for :all wildcard" do
+      config.route_group :default, models: :all
+      expect(config.models_for_group(:default)).to contain_exactly(:posts, :blogs)
     end
 
-    it "returns false when using subdomain" do
-      config.multi_tenant[:enabled] = true
-      config.multi_tenant[:use_subdomain] = true
-      expect(config.needs_org_prefix?).to be false
+    it "returns all models for '*' wildcard" do
+      config.route_group :default, models: "*"
+      expect(config.models_for_group(:default)).to contain_exactly(:posts, :blogs)
+    end
+
+    it "returns only specified models" do
+      config.route_group :driver, models: [:posts]
+      expect(config.models_for_group(:driver)).to eq([:posts])
+    end
+
+    it "filters out unregistered model slugs" do
+      config.route_group :driver, models: [:posts, :nonexistent]
+      expect(config.models_for_group(:driver)).to eq([:posts])
+    end
+
+    it "returns empty array for unknown group" do
+      expect(config.models_for_group(:unknown)).to eq([])
+    end
+  end
+
+  describe "#model_in_group?" do
+    before do
+      config.model :posts, "Post"
+      config.model :blogs, "Blog"
+      config.route_group :driver, models: [:posts]
+    end
+
+    it "returns true when model is in the group" do
+      expect(config.model_in_group?(:posts, :driver)).to be true
+    end
+
+    it "returns false when model is not in the group" do
+      expect(config.model_in_group?(:blogs, :driver)).to be false
     end
   end
 end

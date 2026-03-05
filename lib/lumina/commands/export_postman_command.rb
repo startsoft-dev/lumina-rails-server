@@ -23,30 +23,36 @@ module Lumina
         project_name = options[:project_name] || Rails.application.class.module_parent_name rescue "API"
 
         config = Lumina.config
-        models = config.models
-        is_multi_tenant = config.multi_tenant_enabled?
-        use_subdomain = config.use_subdomain?
-        needs_org_prefix = is_multi_tenant && !use_subdomain
+        has_tenant = config.has_tenant_group?
+        tenant_prefix = has_tenant ? config.route_groups[:tenant][:prefix] : nil
+        needs_org_prefix = has_tenant && tenant_prefix.present? && tenant_prefix.include?(":")
 
         variables = build_collection_variables(base_url, needs_org_prefix)
         items = []
 
         items << build_auth_folder
-        items << build_invitation_folder(needs_org_prefix) if is_multi_tenant
+        items << build_invitation_folder(needs_org_prefix) if has_tenant
 
-        models.each do |slug, model_class_name|
-          model_class = begin
-            model_class_name.constantize
-          rescue NameError
-            say "Model class does not exist: #{model_class_name}", :red
-            next
+        config.route_groups.each do |group_name, group_config|
+          group_models = config.models_for_group(group_name)
+          group_prefix = group_config[:prefix]
+
+          group_models.each do |slug|
+            model_class_name = config.models[slug]
+            model_class = begin
+              model_class_name.constantize
+            rescue NameError
+              say "Model class does not exist: #{model_class_name}", :red
+              next
+            end
+
+            model_meta = introspect_model(model_class, slug)
+            folder_name = config.route_groups.size > 1 ? "#{group_name}/#{slug}" : slug.to_s
+            items << {
+              name: folder_name,
+              item: build_action_folders(slug, model_meta, group_prefix)
+            }
           end
-
-          model_meta = introspect_model(model_class, slug)
-          items << {
-            name: slug.to_s,
-            item: build_action_folders(slug, model_meta, needs_org_prefix)
-          }
         end
 
         collection = {
@@ -140,9 +146,11 @@ module Lumina
         }
       end
 
-      def build_action_folders(slug, meta, needs_org_prefix)
+      def build_action_folders(slug, meta, group_prefix)
         folders = []
-        base = needs_org_prefix ? "{{baseUrl}}/{{organization}}/#{slug}" : "{{baseUrl}}/#{slug}"
+        prefix_part = group_prefix.present? ? group_prefix.gsub(/:[a-z_]+/, "{{organization}}") : nil
+        base = [prefix_part, slug.to_s].compact.reject(&:empty?).join("/")
+        base = "{{baseUrl}}/#{base}"
         except = meta[:except_actions]
 
         folders << { name: "Index", item: build_index_requests(base, slug, meta) } unless except.include?("index")

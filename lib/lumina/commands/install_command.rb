@@ -221,17 +221,7 @@ module Lumina
 
         content = File.read(config_path)
 
-        # Enable multi-tenant
-        content = content.gsub(
-          "c.multi_tenant = {\n    enabled: false",
-          "c.multi_tenant = {\n    enabled: true"
-        )
-
-        content = content.gsub(
-          'use_subdomain: false',
-          "use_subdomain: #{use_subdomain}"
-        )
-
+        # Update organization_identifier_column
         content = content.gsub(
           'organization_identifier_column: "id"',
           "organization_identifier_column: \"#{identifier_column}\""
@@ -242,6 +232,17 @@ module Lumina
           content = content.gsub(
             "# c.model :posts, 'Post'",
             "c.model :organizations, 'Organization'\n  c.model :roles, 'Role'\n  # c.model :posts, 'Post'"
+          )
+        end
+
+        # Add tenant route group
+        tenant_prefix = use_subdomain ? "" : ":organization"
+        middleware_line = use_subdomain ? "# middleware: [ResolveOrganizationFromSubdomain]" : "middleware: [ResolveOrganizationFromRoute]"
+
+        unless content.include?("c.route_group :tenant")
+          content = content.gsub(
+            "# c.route_group :default",
+            "c.route_group :tenant, prefix: \"#{tenant_prefix}\", #{middleware_line}, models: :all\n  # c.route_group :default"
           )
         end
 

@@ -38,11 +38,8 @@ RSpec.describe Lumina::Commands::InvitationLinkCommand do
     # Configure multi-tenant
     Lumina.configure do |c|
       c.model :posts, "Post"
-      c.multi_tenant = {
-        enabled: true,
-        use_subdomain: false,
-        organization_identifier_column: "slug"
-      }
+      c.route_group :tenant, prefix: ":organization", models: :all
+      c.multi_tenant = { organization_identifier_column: "slug" }
     end
   end
 
@@ -193,11 +190,8 @@ RSpec.describe Lumina::Commands::InvitationLinkCommand do
     it "finds organization by ID when configured" do
       Lumina.configure do |c|
         c.model :posts, "Post"
-        c.multi_tenant = {
-          enabled: true,
-          use_subdomain: false,
-          organization_identifier_column: "id"
-        }
+        c.route_group :tenant, prefix: ":organization", models: :all
+        c.multi_tenant = { organization_identifier_column: "id" }
       end
 
       org; role; user
@@ -220,11 +214,8 @@ RSpec.describe Lumina::Commands::InvitationLinkCommand do
     it "fails to find org by slug when configured to use id" do
       Lumina.configure do |c|
         c.model :posts, "Post"
-        c.multi_tenant = {
-          enabled: true,
-          use_subdomain: false,
-          organization_identifier_column: "id"
-        }
+        c.route_group :tenant, prefix: ":organization", models: :all
+        c.multi_tenant = { organization_identifier_column: "id" }
       end
 
       org # create org

@@ -129,51 +129,54 @@ RSpec.describe "RouteRegistration" do
   end
 
   # ------------------------------------------------------------------
-  # Multi-tenant configuration
+  # Route groups configuration
   # ------------------------------------------------------------------
 
-  describe "multi-tenant configuration" do
-    it "configures route prefix for multi-tenant" do
+  describe "route groups configuration" do
+    it "configures a tenant route group with prefix" do
       Lumina.configure do |c|
-        c.multi_tenant[:enabled] = true
-        c.multi_tenant[:use_subdomain] = false
+        c.model :posts, "Post"
+        c.route_group :tenant, prefix: ":organization", middleware: ["ResolveOrg"], models: :all
       end
 
-      expect(Lumina.config.multi_tenant[:enabled]).to be true
-      expect(Lumina.config.multi_tenant[:use_subdomain]).to be false
+      expect(Lumina.config.has_tenant_group?).to be true
+      expect(Lumina.config.route_groups[:tenant][:prefix]).to eq(":organization")
     end
 
-    it "configures subdomain for multi-tenant" do
+    it "configures multiple route groups" do
+      Lumina.reset_configuration!
       Lumina.configure do |c|
-        c.multi_tenant[:enabled] = true
-        c.multi_tenant[:use_subdomain] = true
+        c.model :posts, "Post"
+        c.route_group :tenant, prefix: ":organization", models: :all
+        c.route_group :driver, prefix: "driver", models: [:posts]
+        c.route_group :admin, prefix: "admin", models: :all
       end
 
-      expect(Lumina.config.multi_tenant[:enabled]).to be true
-      expect(Lumina.config.multi_tenant[:use_subdomain]).to be true
+      expect(Lumina.config.route_groups.size).to eq(3)
     end
   end
 
   # ------------------------------------------------------------------
-  # Public models
+  # Public route group
   # ------------------------------------------------------------------
 
-  describe "public models" do
-    it "marks models as public" do
+  describe "public route group" do
+    it "marks models as public via public route group" do
       Lumina.configure do |c|
         c.model :posts, "Post"
-        c.public_model :posts
+        c.route_group :public, prefix: "public", models: [:posts]
       end
 
-      expect(Lumina.config.public_models).to include(:posts)
+      expect(Lumina.config.public_model?(:posts)).to be true
     end
 
-    it "non-public models are not in public list" do
+    it "non-public models are not in public group" do
       Lumina.configure do |c|
         c.model :posts, "Post"
+        c.route_group :default, models: :all
       end
 
-      expect(Lumina.config.public_models).not_to include(:posts)
+      expect(Lumina.config.public_model?(:posts)).to be false
     end
   end
 

@@ -10,7 +10,7 @@ module Lumina
     include Pundit::Authorization
 
     before_action :set_model_class
-    before_action :authenticate_user!, unless: :public_model?
+    before_action :authenticate_user!, unless: :public_route_group?
 
     # GET /api/{slug}
     def index
@@ -242,8 +242,12 @@ module Lumina
     # Authentication
     # ------------------------------------------------------------------
 
-    def public_model?
-      Lumina.config.public_model?(model_slug)
+    def public_route_group?
+      current_route_group == "public"
+    end
+
+    def current_route_group
+      params[:route_group]
     end
 
     def authenticate_user!
@@ -279,8 +283,6 @@ module Lumina
     end
 
     def apply_organization_scope(builder)
-      return unless Lumina.config.multi_tenant_enabled?
-
       org = current_organization
       return unless org
 
@@ -342,8 +344,6 @@ module Lumina
     end
 
     def add_organization_to_data(data)
-      return unless Lumina.config.multi_tenant_enabled?
-
       org = current_organization
       return unless org
 
@@ -359,11 +359,9 @@ module Lumina
     def find_record
       scope = model_class.all
 
-      if Lumina.config.multi_tenant_enabled? && current_organization
-        org = current_organization
-        if model_class.column_names.include?("organization_id")
-          scope = scope.where(organization_id: org.id)
-        end
+      org = current_organization
+      if org && model_class.column_names.include?("organization_id")
+        scope = scope.where(organization_id: org.id)
       end
 
       scope.find(params[:id])
@@ -669,7 +667,7 @@ module Lumina
     end
 
     def params_hash
-      params.except(:controller, :action, :model_slug, :id, :format).to_unsafe_h
+      params.except(:controller, :action, :model_slug, :route_group, :id, :format).to_unsafe_h
     end
   end
 end

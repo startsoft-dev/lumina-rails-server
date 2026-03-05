@@ -154,7 +154,7 @@ RSpec.describe Lumina::Commands::ExportPostmanCommand do
     end
 
     it "creates standard CRUD folders" do
-      folders = command.send(:build_action_folders, :posts, meta, false)
+      folders = command.send(:build_action_folders, :posts, meta, "")
       folder_names = folders.map { |f| f[:name] }
 
       expect(folder_names).to include("Index", "Show", "Store", "Update", "Destroy")
@@ -162,7 +162,7 @@ RSpec.describe Lumina::Commands::ExportPostmanCommand do
 
     it "includes soft delete folders when model uses soft deletes" do
       meta_with_soft_delete = meta.merge(uses_soft_deletes: true)
-      folders = command.send(:build_action_folders, :posts, meta_with_soft_delete, false)
+      folders = command.send(:build_action_folders, :posts, meta_with_soft_delete, "")
       folder_names = folders.map { |f| f[:name] }
 
       expect(folder_names).to include("Trashed", "Restore", "Force Delete")
@@ -170,7 +170,7 @@ RSpec.describe Lumina::Commands::ExportPostmanCommand do
 
     it "excludes folders listed in except_actions" do
       meta_with_except = meta.merge(except_actions: ["store", "destroy"])
-      folders = command.send(:build_action_folders, :posts, meta_with_except, false)
+      folders = command.send(:build_action_folders, :posts, meta_with_except, "")
       folder_names = folders.map { |f| f[:name] }
 
       expect(folder_names).not_to include("Store", "Destroy")
@@ -178,7 +178,7 @@ RSpec.describe Lumina::Commands::ExportPostmanCommand do
     end
 
     it "includes org prefix in URLs when needed" do
-      folders = command.send(:build_action_folders, :posts, meta, true)
+      folders = command.send(:build_action_folders, :posts, meta, ":organization")
       index_folder = folders.find { |f| f[:name] == "Index" }
       list_item = index_folder[:item].first
 

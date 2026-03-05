@@ -394,18 +394,18 @@ RSpec.describe Lumina::Commands::GenerateCommand do
   # ------------------------------------------------------------------
 
   describe "#multi_tenant_enabled?" do
-    it "returns true when config has enabled: true" do
+    it "returns true when config has route_group :tenant" do
       config_dir = File.join(tmp_dir, "config/initializers")
       FileUtils.mkdir_p(config_dir)
-      File.write(File.join(config_dir, "lumina.rb"), "enabled: true")
+      File.write(File.join(config_dir, "lumina.rb"), 'c.route_group :tenant, prefix: ":organization"')
 
       expect(command.send(:multi_tenant_enabled?)).to be true
     end
 
-    it "returns false when config has enabled: false" do
+    it "returns false when config has no tenant route group" do
       config_dir = File.join(tmp_dir, "config/initializers")
       FileUtils.mkdir_p(config_dir)
-      File.write(File.join(config_dir, "lumina.rb"), "enabled: false")
+      File.write(File.join(config_dir, "lumina.rb"), 'c.route_group :default, prefix: ""')
 
       expect(command.send(:multi_tenant_enabled?)).to be false
     end

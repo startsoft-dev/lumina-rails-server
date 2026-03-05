@@ -2,16 +2,13 @@
 
 module Lumina
   class Configuration
-    attr_accessor :models, :public_models, :multi_tenant, :invitations, :nested, :test_framework
+    attr_accessor :models, :route_groups, :multi_tenant, :invitations, :nested, :test_framework
 
     def initialize
       @models = {}
-      @public_models = []
+      @route_groups = {}
       @multi_tenant = {
-        enabled: false,
-        use_subdomain: false,
-        organization_identifier_column: "id",
-        middleware: nil
+        organization_identifier_column: "id"
       }
       @invitations = {
         expires_days: 7,
@@ -31,10 +28,14 @@ module Lumina
       @models[slug.to_sym] = klass_name.to_s
     end
 
-    # Mark models as public (no auth required)
-    # Usage: config.public_model :posts
-    def public_model(*slugs)
-      slugs.each { |s| @public_models << s.to_sym }
+    # Register a route group with its configuration
+    # Usage: config.route_group :tenant, prefix: ':organization', middleware: [ResolveOrganizationFromRoute], models: :all
+    def route_group(name, prefix: "", middleware: [], models: :all)
+      @route_groups[name.to_sym] = {
+        prefix: prefix.to_s,
+        middleware: Array(middleware),
+        models: models
+      }
     end
 
     # Resolve a model class from its slug
@@ -59,20 +60,39 @@ module Lumina
       nil
     end
 
-    def multi_tenant_enabled?
-      @multi_tenant[:enabled]
+    # Whether a 'tenant' route group is configured
+    def has_tenant_group?
+      @route_groups.key?(:tenant)
     end
 
-    def use_subdomain?
-      @multi_tenant[:use_subdomain]
+    # Whether a 'public' route group is configured
+    def has_public_group?
+      @route_groups.key?(:public)
     end
 
-    def needs_org_prefix?
-      multi_tenant_enabled? && !use_subdomain?
+    # Resolve the model slugs for a given route group
+    def models_for_group(group_name)
+      group = @route_groups[group_name.to_sym]
+      return [] unless group
+
+      group_models = group[:models]
+      if group_models == :all || group_models == "*"
+        @models.keys
+      else
+        Array(group_models).map(&:to_sym) & @models.keys
+      end
     end
 
+    # Check if a model belongs to the 'public' route group
     def public_model?(slug)
-      @public_models.include?(slug.to_sym)
+      return false unless has_public_group?
+
+      models_for_group(:public).include?(slug.to_sym)
+    end
+
+    # Check if a specific slug belongs to a specific group
+    def model_in_group?(slug, group_name)
+      models_for_group(group_name).include?(slug.to_sym)
     end
   end
 end

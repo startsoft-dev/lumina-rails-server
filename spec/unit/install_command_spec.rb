@@ -227,19 +227,15 @@ RSpec.describe Lumina::Commands::InstallCommand do
       command.send(:publish_config, "rspec")
     end
 
-    it "enables multi-tenant in config" do
-      # Write a config that has the default disabled multi-tenant block
+    it "updates organization_identifier_column in config" do
       config_path = File.join(tmp_dir, "config/initializers/lumina.rb")
       content = File.read(config_path)
-      # Replace commented block with actual block for testing
-      content += "\n  c.multi_tenant = {\n    enabled: false,\n    use_subdomain: false,\n    organization_identifier_column: \"id\"\n  }\n"
+      content += "\n  c.multi_tenant = {\n    organization_identifier_column: \"id\"\n  }\n"
       File.write(config_path, content)
 
-      command.send(:update_config, true, "slug")
+      command.send(:update_config, false, "slug")
 
       updated = File.read(config_path)
-      expect(updated).to include("enabled: true")
-      expect(updated).to include("use_subdomain: true")
       expect(updated).to include('organization_identifier_column: "slug"')
     end
 

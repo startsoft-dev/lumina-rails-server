@@ -60,6 +60,7 @@ ActiveRecord::Schema.define do
     t.string :reset_password_token
     t.datetime :reset_password_sent_at
     t.datetime :email_verified_at
+    t.json :global_permissions
     t.timestamps
   end
   add_index :users, :email, unique: true
@@ -253,6 +254,7 @@ RSpec.configure do |config|
     Lumina.configure do |c|
       c.model :posts, "Post"
       c.model :blogs, "Blog"
+      c.route_group :default, prefix: "", middleware: [], models: :all
     end
   end
 

@@ -151,10 +151,14 @@ module Lumina
           # Determine the table name from the association
           assoc = model_class.reflect_on_association(relation.to_sym)
           if assoc
-            table_name = assoc.klass.table_name
-            @scope = @scope.left_outer_joins(relation.to_sym)
-            conditions << "LOWER(#{table_name}.#{field}) LIKE ?"
-            values << term
+            begin
+              table_name = assoc.klass.table_name
+              @scope = @scope.left_outer_joins(relation.to_sym)
+              conditions << "LOWER(#{table_name}.#{field}) LIKE ?"
+              values << term
+            rescue NoMethodError, NameError
+              next
+            end
           end
         else
           conditions << "LOWER(#{model_class.table_name}.#{column}) LIKE ?"

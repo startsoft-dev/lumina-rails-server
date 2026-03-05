@@ -516,7 +516,7 @@ module Lumina
         return false unless File.exist?(config_path)
 
         content = File.read(config_path)
-        content.include?("enabled: true")
+        content.include?("route_group :tenant")
       end
 
       def get_existing_models

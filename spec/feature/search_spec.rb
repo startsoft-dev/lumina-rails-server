@@ -2,6 +2,16 @@
 
 require "spec_helper"
 
+class SearchablePostWithUser < ActiveRecord::Base
+  include Lumina::HasLumina
+
+  self.table_name = "posts"
+
+  belongs_to :user, optional: true
+
+  lumina_search "title", "user.name"
+end
+
 RSpec.describe "Search" do
   # ------------------------------------------------------------------
   # Helpers
@@ -112,15 +122,7 @@ RSpec.describe "Search" do
       post1 = Post.create!(title: "Post A", content: "C", user: user1)
       post2 = Post.create!(title: "Post B", content: "C", user: user2)
 
-      # Create a model that searches through user.name
-      search_model = Class.new(ActiveRecord::Base) do
-        include Lumina::HasLumina
-        self.table_name = "posts"
-        belongs_to :user, optional: true
-        lumina_search "title", "user.name"
-      end
-
-      builder = Lumina::QueryBuilder.new(search_model, params: { search: "Rails" }).build
+      builder = Lumina::QueryBuilder.new(SearchablePostWithUser, params: { search: "Rails" }).build
       result = builder.to_scope
 
       expect(result.count).to eq(1)

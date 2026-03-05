@@ -9,9 +9,7 @@ RSpec.describe Lumina::Middleware::ResolveOrganizationFromSubdomain do
 
   before do
     Lumina.configure do |c|
-      c.multi_tenant[:enabled] = true
-      c.multi_tenant[:use_subdomain] = true
-      c.multi_tenant[:organization_identifier_column] = "slug"
+      c.multi_tenant = { organization_identifier_column: "slug" }
     end
   end
 
