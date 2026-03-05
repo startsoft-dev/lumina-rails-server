@@ -17,19 +17,12 @@ module Lumina
   #     lumina_includes :user, :comments
   #     lumina_search :title, :content
   #
-  #     lumina_validation_rules(
-  #       title: 'required|string|max:255',
-  #       content: 'string',
-  #       status: 'string|in:draft,published'
-  #     )
+  #     # Standard Rails validations for type/format (NOT presence — use allow_nil: true)
+  #     validates :title, length: { maximum: 255 }, allow_nil: true
+  #     validates :status, inclusion: { in: %w[draft published] }, allow_nil: true
   #
-  #     lumina_store_rules(
-  #       '*': { title: :required, content: :required }
-  #     )
-  #
-  #     lumina_update_rules(
-  #       '*': { title: :nullable, content: :nullable }
-  #     )
+  #     # Field permissions are controlled by the policy (PostPolicy).
+  #     # See: permitted_attributes_for_create / permitted_attributes_for_update
   #
   #     belongs_to :user
   #     has_many :comments
@@ -40,7 +33,7 @@ module Lumina
   #   Concern           | Purpose
   #   ------------------|-----------------------------------------------------------
   #   HasLumina         | Query builder DSL (filters, sorts, includes, etc.)
-  #   HasValidation     | Role-based validation rules (pipe-delimited format)
+  #   HasValidation     | Format validation for request data
   #   HidableColumns    | Dynamic column hiding from API responses
   #   HasAutoScope      | Auto-discovery of ModelScopes::{Model}Scope classes
   #
@@ -66,19 +59,13 @@ module Lumina
   #     lumina_filters :status, :client_id
   #     lumina_sorts :created_at, :amount
   #
-  #     lumina_validation_rules(
-  #       amount: 'required|numeric|min:0',
-  #       client_id: 'required|integer|exists:clients,id'
-  #     )
+  #     validates :amount, numericality: { greater_than_or_equal_to: 0 }, allow_nil: true
+  #     validates :client_id, numericality: { only_integer: true }, allow_nil: true
   #
-  #     lumina_store_rules(
-  #       admin: { amount: :required, client_id: :required, status: :nullable },
-  #       '*':   { amount: :required, client_id: :required }
-  #     )
   #   end
   #
   # @see Lumina::HasLumina       Query builder configuration
-  # @see Lumina::HasValidation   Validation rules and role-based overrides
+  # @see Lumina::HasValidation   Format validation
   # @see Lumina::HidableColumns  Column visibility control
   # @see Lumina::HasAutoScope    Automatic scope discovery
   #
@@ -301,90 +288,21 @@ module Lumina
     # =========================================================================
     # VALIDATION (provided by Lumina::HasValidation)
     # =========================================================================
+    # Format validation uses standard ActiveModel +validates+ declarations
+    # on your model (always with +allow_nil: true+).
+    #
+    #   validates :title, length: { maximum: 255 }, allow_nil: true
+    #   validates :status, inclusion: { in: %w[draft published] }, allow_nil: true
+    #
+    # Field permissions (which attributes are accepted on create/update)
+    # are controlled by the policy. See +permitted_attributes_for_create+
+    # and +permitted_attributes_for_update+ on your policy class.
+    # =========================================================================
 
-    # @!attribute [rw] lumina_base_rules
-    #   Base validation rules for all fields (pipe-delimited, Laravel-compatible format).
-    #
-    #   These format rules are applied for every action & role. Store/update
-    #   rules layer on top of these.
-    #
-    #   Supported rules: +required+, +nullable+, +sometimes+, +string+,
-    #   +integer+, +numeric+, +boolean+, +email+, +date+, +max:N+, +min:N+,
-    #   +in:val1,val2+, +exists:table,column+, +unique:table,column+,
-    #   +uuid+, +array+.
-    #
-    #   Set via DSL: +lumina_validation_rules(title: 'required|string|max:255')+
-    #
-    #   @return [Hash{String => String}]
-    #   @example
-    #     lumina_validation_rules(
-    #       title:   'required|string|max:255',
-    #       body:    'required|string',
-    #       status:  'string|in:draft,published,archived',
-    #       email:   'email|max:255',
-    #       score:   'integer|min:0|max:100'
-    #     )
-    self.lumina_base_rules = {}
-
-    # @!attribute [rw] lumina_store_rules_config
-    #   Store (create) validation -- controls which fields are accepted on POST.
-    #
-    #   Supports two formats:
-    #
-    #   *Legacy format* (flat array of field names -- picks from base rules):
-    #     lumina_store_rules :title, :content
-    #
-    #   *Role-keyed format* (per-role overrides with +'*'+ wildcard fallback):
-    #     lumina_store_rules(
-    #       admin:  { title: :required, content: :required, status: :nullable },
-    #       editor: { title: :required, content: :required },
-    #       '*':    { title: :required }
-    #     )
-    #
-    #   Role resolution uses +HasPermissions#role_slug_for_validation+.
-    #   If the role matches a key, those rules are used. Otherwise +'*'+ is used.
-    #
-    #   @return [Hash, Array]
-    #   @example Legacy format
-    #     lumina_store_rules :title, :content
-    #   @example Role-keyed format
-    #     lumina_store_rules(
-    #       admin:  { title: :required, content: :required, status: :nullable, is_published: :nullable },
-    #       editor: { title: :required, content: :required },
-    #       '*':    { title: :required }
-    #     )
-    self.lumina_store_rules_config = {}
-
-    # @!attribute [rw] lumina_update_rules_config
-    #   Update validation -- controls which fields are accepted on PUT/PATCH.
-    #
-    #   Same format options as +lumina_store_rules_config+.
-    #
-    #   @return [Hash, Array]
-    #   @example Legacy format
-    #     lumina_update_rules :title, :content, :status
-    #   @example Role-keyed format
-    #     lumina_update_rules(
-    #       admin: { title: :sometimes, status: :nullable, is_published: :nullable },
-    #       '*':   { title: :sometimes, content: :sometimes }
-    #     )
-    self.lumina_update_rules_config = {}
-
-    # @!attribute [rw] lumina_validation_messages
-    #   Custom validation error messages (optional).
-    #
-    #   Follows the +field.rule+ format for targeted messages.
-    #
-    #   Set via DSL: +lumina_messages('title.required' => 'Every post needs a title.')+
-    #
-    #   @return [Hash{String => String}]
-    #   @example
-    #     lumina_messages(
-    #       'title.required' => 'Every post needs a title.',
-    #       'title.max'      => 'Post title cannot exceed 255 characters.',
-    #       'status.in'      => 'Status must be one of: draft, published, archived.'
-    #     )
-    self.lumina_validation_messages = {}
+    # Field permissions (which attributes are accepted on create/update) are
+    # controlled by the policy, not the model. Implement
+    # +permitted_attributes_for_create+ and +permitted_attributes_for_update+
+    # on your policy class.
 
     # =========================================================================
     # HIDDEN COLUMNS (provided by Lumina::HidableColumns)
@@ -397,7 +315,8 @@ module Lumina
     #   +remember_token+, +created_at+, +updated_at+, +deleted_at+,
     #   +discarded_at+, +email_verified_at+.
     #
-    #   For per-user column hiding, implement +hidden_columns+ on your Policy.
+    #   For per-user column hiding, implement +hidden_attributes_for_show+ /
+    #   +permitted_attributes_for_show+ on your Policy.
     #
     #   Set via DSL: +lumina_additional_hidden :api_token, :stripe_id+
     #

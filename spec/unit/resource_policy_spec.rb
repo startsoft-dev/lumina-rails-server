@@ -210,13 +210,56 @@ RSpec.describe Lumina::ResourcePolicy do
   end
 
   # ------------------------------------------------------------------
-  # Hidden columns
+  # Attribute permission defaults
   # ------------------------------------------------------------------
 
-  describe "hidden_columns" do
-    it "returns empty array by default" do
+  describe "attribute permission defaults" do
+    it "returns ['*'] for permitted_attributes_for_show" do
       policy = described_class.new(nil, Post.new)
-      expect(policy.hidden_columns(nil)).to eq([])
+      expect(policy.permitted_attributes_for_show(nil)).to eq(['*'])
+    end
+
+    it "returns [] for hidden_attributes_for_show" do
+      policy = described_class.new(nil, Post.new)
+      expect(policy.hidden_attributes_for_show(nil)).to eq([])
+    end
+
+    it "returns ['*'] for permitted_attributes_for_create" do
+      policy = described_class.new(nil, Post.new)
+      expect(policy.permitted_attributes_for_create(nil)).to eq(['*'])
+    end
+
+    it "returns ['*'] for permitted_attributes_for_update" do
+      policy = described_class.new(nil, Post.new)
+      expect(policy.permitted_attributes_for_update(nil)).to eq(['*'])
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # has_role?
+  # ------------------------------------------------------------------
+
+  describe "has_role?" do
+    it "returns false for nil user" do
+      policy = described_class.new(nil, Post.new)
+      expect(policy.has_role?(nil, 'admin')).to be false
+    end
+
+    it "returns true when user has matching role" do
+      user = create_user_with_permissions(["*"])
+      # Need org in RequestStore for has_role? to work
+      policy = described_class.new(user, Post.new)
+      org = Organization.last
+      allow(policy).to receive(:current_organization).and_return(org)
+      expect(policy.has_role?(user, user.user_roles.first.role.slug)).to be true
+    end
+
+    it "returns false when user has different role" do
+      user = create_user_with_permissions(["*"])
+      policy = described_class.new(user, Post.new)
+      org = Organization.last
+      allow(policy).to receive(:current_organization).and_return(org)
+      expect(policy.has_role?(user, 'nonexistent')).to be false
     end
   end
 

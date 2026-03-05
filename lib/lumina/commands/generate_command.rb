@@ -349,7 +349,7 @@ module Lumina
 
         validation_rules = columns.to_h { |c| [c[:name], column_to_validation_rule(c, table_name)] }
 
-        content = ERB.new(File.read(template)).result_with_hash(
+        content = ERB.new(File.read(template), trim_mode: "-").result_with_hash(
           name: name,
           table_name: table_name,
           fillable: fillable,
@@ -375,7 +375,7 @@ module Lumina
         dest = Rails.root.join("db/migrate/#{timestamp}_create_#{table_name}.rb")
         FileUtils.mkdir_p(File.dirname(dest))
 
-        content = ERB.new(File.read(template)).result_with_hash(
+        content = ERB.new(File.read(template), trim_mode: "-").result_with_hash(
           table_name: table_name,
           class_name: "Create#{name.pluralize}",
           columns: columns,
@@ -390,7 +390,7 @@ module Lumina
         dest = Rails.root.join("spec/factories/#{name.underscore.pluralize}.rb")
         FileUtils.mkdir_p(File.dirname(dest))
 
-        content = ERB.new(File.read(template)).result_with_hash(
+        content = ERB.new(File.read(template), trim_mode: "-").result_with_hash(
           name: name,
           columns: columns
         )
@@ -403,7 +403,7 @@ module Lumina
         dest = Rails.root.join("app/policies/#{name.underscore}_policy.rb")
         FileUtils.mkdir_p(File.dirname(dest))
 
-        content = ERB.new(File.read(template)).result_with_hash(name: name)
+        content = ERB.new(File.read(template), trim_mode: "-").result_with_hash(name: name)
 
         File.write(dest, content)
       end
@@ -414,7 +414,7 @@ module Lumina
         FileUtils.mkdir_p(File.dirname(dest))
 
         table_name = name.underscore.pluralize
-        content = ERB.new(File.read(template)).result_with_hash(
+        content = ERB.new(File.read(template), trim_mode: "-").result_with_hash(
           name: name,
           table_name: table_name
         )

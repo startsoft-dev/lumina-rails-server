@@ -29,8 +29,24 @@ class <%= name %>Policy < Lumina::ResourcePolicy
   #   super
   # end
 
-  # Define additional columns to hide based on the authenticated user.
-  # def hidden_columns(user)
-  #   []
+  # ---------------------------------------------------------------
+  # Attribute Permissions
+  # ---------------------------------------------------------------
+  # Override to control which fields each role can read/write.
+  #
+  # def permitted_attributes_for_show(user)
+  #   has_role?(user, 'admin') ? ['*'] : ['id', 'title']
+  # end
+  #
+  # def hidden_attributes_for_show(user)
+  #   has_role?(user, 'admin') ? [] : ['internal_notes']
+  # end
+  #
+  # def permitted_attributes_for_create(user)
+  #   has_role?(user, 'admin') ? ['*'] : ['title', 'content']
+  # end
+  #
+  # def permitted_attributes_for_update(user)
+  #   has_role?(user, 'admin') ? ['*'] : ['title', 'content']
   # end
 end

@@ -164,7 +164,7 @@ module Lumina
           template = File.join(templates_dir, "#{name}.rb.erb")
           next unless File.exist?(template)
 
-          content = ERB.new(File.read(template)).result(binding)
+          content = ERB.new(File.read(template), trim_mode: "-").result(binding)
           File.write(migrations_path.join("#{ts}_#{name}.rb"), content)
         end
       end
@@ -180,7 +180,7 @@ module Lumina
           next unless File.exist?(template)
 
           dest_name = model.camelize
-          content = ERB.new(File.read(template)).result_with_hash(roles: roles)
+          content = ERB.new(File.read(template), trim_mode: "-").result_with_hash(roles: roles)
           File.write(models_path.join("#{model}.rb"), content)
         end
       end
@@ -195,7 +195,7 @@ module Lumina
           template = File.join(templates_dir, "#{factory}.rb.erb")
           next unless File.exist?(template)
 
-          content = ERB.new(File.read(template)).result(binding)
+          content = ERB.new(File.read(template), trim_mode: "-").result(binding)
           File.write(factories_path.join("#{factory}.rb"), content)
         end
       end
@@ -210,7 +210,7 @@ module Lumina
           template = File.join(templates_dir, "#{policy}.rb.erb")
           next unless File.exist?(template)
 
-          content = ERB.new(File.read(template)).result(binding)
+          content = ERB.new(File.read(template), trim_mode: "-").result(binding)
           File.write(policies_path.join("#{policy}.rb"), content)
         end
       end
@@ -256,13 +256,13 @@ module Lumina
 
         template = File.join(templates_dir, "role_seeder.rb.erb")
         if File.exist?(template)
-          content = ERB.new(File.read(template)).result_with_hash(roles: roles)
+          content = ERB.new(File.read(template), trim_mode: "-").result_with_hash(roles: roles)
           File.write(seeders_path.join("role_seeder.rb"), content)
         end
 
         template = File.join(templates_dir, "organization_seeder.rb.erb")
         if File.exist?(template)
-          content = ERB.new(File.read(template)).result(binding)
+          content = ERB.new(File.read(template), trim_mode: "-").result(binding)
           File.write(seeders_path.join("organization_seeder.rb"), content)
         end
       end
@@ -282,7 +282,7 @@ module Lumina
 
         template = File.expand_path("../../templates/audit_trail/create_audit_logs.rb.erb", __FILE__)
         if File.exist?(template)
-          content = ERB.new(File.read(template)).result(binding)
+          content = ERB.new(File.read(template), trim_mode: "-").result(binding)
           File.write(migrations_path.join("#{timestamp}_create_audit_logs.rb"), content)
         end
       end

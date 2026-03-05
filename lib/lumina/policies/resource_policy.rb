@@ -16,9 +16,21 @@ module Lumina
   #       super && record.user_id == user.id
   #     end
   #
-  #     # Column-level visibility:
-  #     def hidden_columns(user)
-  #       user_is_admin?(user) ? [] : ['internal_notes']
+  #     # Attribute permissions:
+  #     def permitted_attributes_for_show(user)
+  #       has_role?(user, 'admin') ? ['*'] : ['id', 'title']
+  #     end
+  #
+  #     def hidden_attributes_for_show(user)
+  #       has_role?(user, 'admin') ? [] : ['internal_notes']
+  #     end
+  #
+  #     def permitted_attributes_for_create(user)
+  #       has_role?(user, 'admin') ? ['*'] : ['title', 'content']
+  #     end
+  #
+  #     def permitted_attributes_for_update(user)
+  #       has_role?(user, 'admin') ? ['*'] : ['title', 'content']
   #     end
   #   end
   class ResourcePolicy
@@ -86,16 +98,61 @@ module Lumina
     end
 
     # ------------------------------------------------------------------
-    # Column hiding
+    # Attribute Permissions
     # ------------------------------------------------------------------
 
-    # Override in child policies to define role-based column visibility.
-    # Return an array of column names to hide from the response.
+    # Override to whitelist which columns are visible in API responses.
+    # Return ['*'] to allow all columns (default).
     #
     # @param user [Object, nil] The authenticated user
     # @return [Array<String>]
-    def hidden_columns(user)
+    def permitted_attributes_for_show(user)
+      ['*']
+    end
+
+    # Override to blacklist columns from API responses.
+    # These are always hidden, even if listed in permitted_attributes_for_show.
+    #
+    # @param user [Object, nil] The authenticated user
+    # @return [Array<String>]
+    def hidden_attributes_for_show(user)
       []
+    end
+
+    # Override to whitelist which fields a user can submit on create.
+    # Return ['*'] to allow all fields (default).
+    #
+    # @param user [Object, nil] The authenticated user
+    # @return [Array<String>]
+    def permitted_attributes_for_create(user)
+      ['*']
+    end
+
+    # Override to whitelist which fields a user can submit on update.
+    # Return ['*'] to allow all fields (default).
+    #
+    # @param user [Object, nil] The authenticated user
+    # @return [Array<String>]
+    def permitted_attributes_for_update(user)
+      ['*']
+    end
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    # Check if the user has a specific role in the current organization.
+    # Convenience method for use in child policies.
+    #
+    # @param user [Object, nil] The authenticated user
+    # @param role_slug [String, Symbol] Role slug (e.g. 'admin', 'editor')
+    # @return [Boolean]
+    def has_role?(user, role_slug)
+      return false unless user
+      return false unless user.respond_to?(:role_slug_for_validation)
+
+      organization = current_organization
+      user.role_slug_for_validation(organization) == role_slug.to_s
     end
 
     private

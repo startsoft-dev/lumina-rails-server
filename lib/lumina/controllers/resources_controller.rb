@@ -36,12 +36,18 @@ module Lumina
     def store
       authorize model_class, :create?, policy_class: policy_for(model_class)
 
+      permitted_fields = resolve_permitted_fields(current_user, "create")
+
+      # Check for forbidden fields → 403
+      forbidden = find_forbidden_fields(params_hash, permitted_fields)
+      if forbidden.any?
+        return render json: {
+          message: "You are not allowed to set the following field(s): #{forbidden.join(', ')}"
+        }, status: :forbidden
+      end
+
       model_instance = model_class.new
-      validation = model_instance.validate_store(
-        params_hash,
-        user: current_user,
-        organization: current_organization
-      )
+      validation = model_instance.validate_for_action(params_hash, permitted_fields: permitted_fields)
 
       unless validation[:valid]
         return render json: { errors: validation[:errors] }, status: :unprocessable_entity
@@ -79,12 +85,18 @@ module Lumina
       record = find_record
       authorize record, :update?, policy_class: policy_for(record)
 
+      permitted_fields = resolve_permitted_fields(current_user, "update")
+
+      # Check for forbidden fields → 403
+      forbidden = find_forbidden_fields(params_hash, permitted_fields)
+      if forbidden.any?
+        return render json: {
+          message: "You are not allowed to set the following field(s): #{forbidden.join(', ')}"
+        }, status: :forbidden
+      end
+
       model_instance = model_class.new
-      validation = model_instance.validate_update(
-        params_hash,
-        user: current_user,
-        organization: current_organization
-      )
+      validation = model_instance.validate_for_action(params_hash, permitted_fields: permitted_fields)
 
       unless validation[:valid]
         return render json: { errors: validation[:errors] }, status: :unprocessable_entity
@@ -537,13 +549,29 @@ module Lumina
         return nil
       end
 
-      model_instance = op_model_class.new
+      action = operation["action"] == "create" ? "create" : "update"
+      op_policy = policy_for(op_model_class)
+      op_policy_instance = op_policy.new(current_user, op_model_class)
 
-      if operation["action"] == "create"
-        validation = model_instance.validate_store(operation["data"], user: current_user, organization: current_organization)
+      permitted_fields = if action == "create" && op_policy_instance.respond_to?(:permitted_attributes_for_create)
+        op_policy_instance.permitted_attributes_for_create(current_user)
+      elsif action == "update" && op_policy_instance.respond_to?(:permitted_attributes_for_update)
+        op_policy_instance.permitted_attributes_for_update(current_user)
       else
-        validation = model_instance.validate_update(operation["data"], user: current_user, organization: current_organization)
+        ['*']
       end
+
+      # Check for forbidden fields → 403
+      forbidden = find_forbidden_fields(operation["data"], permitted_fields)
+      if forbidden.any?
+        render json: {
+          message: "You are not allowed to set the following field(s): #{forbidden.join(', ')}"
+        }, status: :forbidden
+        return nil
+      end
+
+      model_instance = op_model_class.new
+      validation = model_instance.validate_for_action(operation["data"], permitted_fields: permitted_fields)
 
       unless validation[:valid]
         errors = {}
@@ -611,6 +639,33 @@ module Lumina
       end
 
       results
+    end
+
+    # ------------------------------------------------------------------
+    # Permitted fields resolution
+    # ------------------------------------------------------------------
+
+    def resolve_permitted_fields(user, action)
+      policy = policy_for(model_class)
+      policy_instance = policy.new(user, model_class)
+
+      case action.to_s
+      when "create"
+        policy_instance.respond_to?(:permitted_attributes_for_create) ?
+          policy_instance.permitted_attributes_for_create(user) : ["*"]
+      when "update"
+        policy_instance.respond_to?(:permitted_attributes_for_update) ?
+          policy_instance.permitted_attributes_for_update(user) : ["*"]
+      else
+        ["*"]
+      end
+    end
+
+    def find_forbidden_fields(params_data, permitted_fields)
+      return [] if permitted_fields == ["*"]
+
+      permitted = permitted_fields.map(&:to_s)
+      params_data.keys.map(&:to_s) - permitted
     end
 
     def params_hash

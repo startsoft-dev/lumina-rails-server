@@ -241,7 +241,7 @@ Tests for `Lumina::ResourcePolicy` — Pundit policy base class with `{slug}.{ac
 | Test | What it verifies |
 |------|-----------------|
 | `resolves slug from config` | Policy resolves slug from `Lumina.config` |
-| `hidden_columns default` | Returns `[]` by default |
+| `attribute permission defaults` | Returns `['*']` / `[]` by default |
 | `aliases view_any?/view?/delete?` | Method aliases work correctly |
 
 ---
@@ -255,12 +255,12 @@ Tests for `Lumina::HidableColumns` — base hidden columns, additional hiding, p
 | `BASE_HIDDEN_COLUMNS includes sensitive columns` | `password`, `password_digest`, `created_at`, `updated_at`, etc. |
 | `returns base hidden for model without policy` | Base columns hidden even without a policy |
 | `includes additional hidden columns` | `lumina_additional_hidden` adds columns |
-| `includes policy-based hidden for guest` | Policy `hidden_columns(nil)` adds to hidden set |
+| `includes policy-based hidden for guest` | Policy `hidden_attributes_for_show(nil)` adds to hidden set |
 | `includes fewer hidden for admin` | Admin (policy returns `[]`) sees all non-base columns |
 | `deduplicates column names` | No duplicate entries in hidden columns list |
 | `as_lumina_json excludes hidden` | JSON output omits hidden columns |
 | `handles missing policy gracefully` | No errors when policy not found |
-| `handles policy without hidden_columns method` | Falls back to base columns |
+| `handles policy without attribute permission methods` | Falls back to base columns |
 
 ---
 

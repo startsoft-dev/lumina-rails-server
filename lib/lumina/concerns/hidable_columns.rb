@@ -16,12 +16,12 @@ module Lumina
   #
   # Policy-based hiding:
   #   class UserPolicy < Lumina::ResourcePolicy
-  #     def hidden_columns(user)
-  #       if user_is_admin?(user)
-  #         []
-  #       else
-  #         ['email', 'phone']
-  #       end
+  #     def hidden_attributes_for_show(user)
+  #       has_role?(user, 'admin') ? [] : ['email', 'phone']
+  #     end
+  #
+  #     def permitted_attributes_for_show(user)
+  #       has_role?(user, 'admin') ? ['*'] : ['id', 'name', 'avatar']
   #     end
   #   end
   module HidableColumns
@@ -76,9 +76,24 @@ module Lumina
       return [] unless policy_class
 
       policy = policy_class.new(user, self)
-      return [] unless policy.respond_to?(:hidden_columns)
+      hidden = []
 
-      policy.hidden_columns(user)
+      # Blacklist: hidden_attributes_for_show
+      if policy.respond_to?(:hidden_attributes_for_show)
+        hidden.concat(policy.hidden_attributes_for_show(user))
+      end
+
+      # Whitelist: permitted_attributes_for_show
+      if policy.respond_to?(:permitted_attributes_for_show)
+        permitted = policy.permitted_attributes_for_show(user)
+        if permitted != ['*']
+          all_columns = self.class.column_names
+          not_permitted = all_columns - permitted.map(&:to_s)
+          hidden.concat(not_permitted)
+        end
+      end
+
+      hidden
     rescue StandardError
       []
     end

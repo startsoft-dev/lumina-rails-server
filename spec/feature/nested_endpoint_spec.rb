@@ -13,17 +13,9 @@ class NestedBlog < ActiveRecord::Base
 
   self.table_name = "blogs"
 
-  lumina_validation_rules(
-    title: "required|string|max:255"
-  )
+  validates :title, length: { maximum: 255 }, allow_nil: true
 
-  lumina_store_rules(
-    "*" => { "title" => "required" }
-  )
-
-  lumina_update_rules(
-    "*" => { "title" => "sometimes" }
-  )
+  # Field permissions are controlled by the policy.
 end
 
 class NestedPost < ActiveRecord::Base
@@ -36,18 +28,33 @@ class NestedPost < ActiveRecord::Base
   belongs_to :user, optional: true
   belongs_to :organization, optional: true
 
-  lumina_validation_rules(
-    title: "required|string|max:255",
-    content: "string"
-  )
+  validates :title, length: { maximum: 255 }, allow_nil: true
 
-  lumina_store_rules(
-    "*" => { "title" => "required", "content" => "nullable" }
-  )
+  # Field permissions are controlled by the policy.
+end
 
-  lumina_update_rules(
-    "*" => { "title" => "sometimes", "content" => "sometimes" }
-  )
+class NestedBlogPolicy < Lumina::ResourcePolicy
+  self.resource_slug = "blogs"
+
+  def permitted_attributes_for_create(_user)
+    ["*"]
+  end
+
+  def permitted_attributes_for_update(_user)
+    ["*"]
+  end
+end
+
+class NestedPostPolicy < Lumina::ResourcePolicy
+  self.resource_slug = "posts"
+
+  def permitted_attributes_for_create(_user)
+    ["*"]
+  end
+
+  def permitted_attributes_for_update(_user)
+    ["*"]
+  end
 end
 
 RSpec.describe "NestedEndpoint" do
@@ -99,11 +106,18 @@ RSpec.describe "NestedEndpoint" do
       post_model = NestedPost.new
 
       # Valid operation
-      valid_result = post_model.validate_store({ "title" => "New Post", "content" => "Body" })
+      valid_result = post_model.validate_for_action(
+        { "title" => "New Post", "content" => "Body" },
+        permitted_fields: ["*"]
+      )
       expect(valid_result[:valid]).to be true
 
-      # Invalid operation: title required
-      invalid_result = post_model.validate_store({ "title" => "", "content" => "Body" })
+      # Invalid operation: title exceeds max length
+      long_title = "x" * 256
+      invalid_result = post_model.validate_for_action(
+        { "title" => long_title, "content" => "Body" },
+        permitted_fields: ["*"]
+      )
       expect(invalid_result[:valid]).to be false
       expect(invalid_result[:errors]).to have_key("title")
     end
@@ -111,7 +125,10 @@ RSpec.describe "NestedEndpoint" do
     it "validates update operations" do
       model = NestedBlog.new
 
-      result = model.validate_update({ "title" => "Updated" })
+      result = model.validate_for_action(
+        { "title" => "Updated" },
+        permitted_fields: ["*"]
+      )
       expect(result[:valid]).to be true
       expect(result[:validated]["title"]).to eq("Updated")
     end
@@ -188,7 +205,7 @@ RSpec.describe "NestedEndpoint" do
       initial_post_count = NestedPost.count
 
       begin
-        ActiveRecord::Base.transaction do
+        ActiveRecord::Base.transaction(requires_new: true) do
           blog.update!(title: "Updated")
           # Force a failure
           raise ActiveRecord::RecordInvalid.new(NestedPost.new)

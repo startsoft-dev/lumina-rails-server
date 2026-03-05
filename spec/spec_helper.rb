@@ -75,6 +75,7 @@ ActiveRecord::Schema.define do
   create_table :posts, force: true do |t|
     t.references :organization, foreign_key: true
     t.references :user, foreign_key: true
+    t.integer :blog_id
     t.string :title, null: false
     t.text :content
     t.boolean :is_published, default: false
@@ -181,22 +182,9 @@ class Post < ActiveRecord::Base
   lumina_includes :user, :comments
   lumina_search :title, :content
 
-  lumina_validation_rules(
-    title: "string|max:255",
-    content: "string",
-    status: "string|max:50",
-    is_published: "boolean"
-  )
-
-  lumina_store_rules(
-    "admin" => { "title" => "required", "content" => "required", "status" => "nullable", "is_published" => "nullable" },
-    "*" => { "title" => "required", "content" => "required" }
-  )
-
-  lumina_update_rules(
-    "admin" => { "title" => "sometimes", "content" => "sometimes", "status" => "nullable", "is_published" => "nullable" },
-    "*" => { "title" => "sometimes", "content" => "sometimes" }
-  )
+  validates :title, length: { maximum: 255 }, allow_nil: true
+  validates :status, length: { maximum: 50 }, allow_nil: true
+  validates :is_published, inclusion: { in: [true, false] }, allow_nil: true
 end
 
 class Blog < ActiveRecord::Base
@@ -221,6 +209,22 @@ end
 
 class PostPolicy < Lumina::ResourcePolicy
   self.resource_slug = "posts"
+
+  def permitted_attributes_for_create(user)
+    if has_role?(user, 'admin')
+      ['*']
+    else
+      ['title', 'content']
+    end
+  end
+
+  def permitted_attributes_for_update(user)
+    if has_role?(user, 'admin')
+      ['*']
+    else
+      ['title', 'content']
+    end
+  end
 end
 
 class BlogPolicy < Lumina::ResourcePolicy

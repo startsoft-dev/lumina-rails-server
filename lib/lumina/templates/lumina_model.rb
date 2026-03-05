@@ -28,34 +28,32 @@ class LuminaModel < Lumina::LuminaModel
   # include Lumina::BelongsToOrganization
 
   # -----------------------------------------------------------------
-  # Validation rules (pipe-delimited, Laravel-compatible)
+  # Validation
   # -----------------------------------------------------------------
   #
-  # lumina_validation_rules(
-  #   title:   'required|string|max:255',
-  #   content: 'string',
-  #   status:  'string|in:draft,published,archived'
-  # )
+  # Use standard ActiveModel validations for type/format constraints.
+  # All validators should use `allow_nil: true` — presence is controlled
+  # by store/update rules below.
   #
-  # # Flat format (wildcard role):
-  # lumina_store_rules(
-  #   '*': { title: :required, content: :required }
-  # )
-  # lumina_update_rules(
-  #   '*': { title: :nullable, content: :nullable, status: :nullable }
-  # )
+  # validates :title, length: { maximum: 255 }, allow_nil: true
+  # validates :content, length: { maximum: 10_000 }, allow_nil: true
+  # validates :status, inclusion: { in: %w[draft published archived] }, allow_nil: true
   #
-  # # Role-keyed format:
-  # lumina_store_rules(
-  #   admin:  { title: :required, content: :required, status: :nullable },
-  #   editor: { title: :required, content: :required },
-  #   '*':    { title: :required }
-  # )
+  # -----------------------------------------------------------------
+  # Store / Update rules (field allowlist + presence modifiers)
+  # -----------------------------------------------------------------
   #
-  # lumina_validation_messages(
-  #   'title.required': 'Every post needs a title.',
-  #   'title.max':      'Post title cannot exceed 255 characters.'
-  # )
+  # Field permissions (which fields each role can create/update) are
+  # controlled by the policy, not the model. See:
+  #   app/policies/<model_name>_policy.rb
+  #
+  # Example policy methods:
+  #   def permitted_attributes_for_create(user)
+  #     has_role?(user, 'admin') ? ['*'] : ['title', 'content']
+  #   end
+  #   def permitted_attributes_for_update(user)
+  #     has_role?(user, 'admin') ? ['*'] : ['title', 'content']
+  #   end
 
   # -----------------------------------------------------------------
   # Query Builder — Filtering, Sorting, Search, Includes, Fields

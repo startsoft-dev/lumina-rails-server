@@ -29,22 +29,38 @@ class <%= name %> < Lumina::LuminaModel
 <% end -%>
 
   # ---------------------------------------------------------------
-  # Validation rules (pipe-delimited, Laravel-compatible)
+  # Validation (ActiveModel — use allow_nil: true for all validators)
   # ---------------------------------------------------------------
 
 <% unless validation_rules.empty? -%>
-  lumina_validation_rules(
-<%= validation_rules.map { |k, v| "    #{k}: '#{v}'" }.join(",\n") %>
-  )
+<% validation_rules.each do |field, rule| -%>
+<% # Convert pipe-delimited rules to ActiveModel validates calls -%>
+<% parts = rule.split("|").reject { |p| %w[required nullable sometimes].include?(p) } -%>
+<% validations = [] -%>
+<% parts.each do |part| -%>
+<%   if part.start_with?("max:") -%>
+<%     validations << "length: { maximum: #{part.sub('max:', '')} }" -%>
+<%   elsif part.start_with?("min:") -%>
+<%     validations << "length: { minimum: #{part.sub('min:', '')} }" -%>
+<%   elsif part == "boolean" -%>
+<%     validations << "inclusion: { in: [true, false] }" -%>
+<%   elsif part.start_with?("in:") -%>
+<%     vals = part.sub("in:", "").split(",").map { |v| "\"#{v}\"" }.join(", ") -%>
+<%     validations << "inclusion: { in: [#{vals}] }" -%>
+<%   elsif part == "integer" -%>
+<%     validations << "numericality: { only_integer: true }" -%>
+<%   end -%>
+<% end -%>
+<% unless validations.empty? -%>
+  validates :<%= field %>, <%= validations.join(", ") %>, allow_nil: true
+<% end -%>
+<% end -%>
 <% end -%>
 
-  lumina_store_rules(
-    '*': { <%= columns.reject { |c| c[:name] == "organization_id" }.map { |c| "#{c[:name]}: :required" }.join(", ") %> }
-  )
-
-  lumina_update_rules(
-    '*': { <%= columns.reject { |c| c[:name] == "organization_id" }.map { |c| "#{c[:name]}: :nullable" }.join(", ") %> }
-  )
+  # ---------------------------------------------------------------
+  # Field permissions are controlled by the policy.
+  # See: app/policies/<%= name.underscore %>_policy.rb
+  # ---------------------------------------------------------------
 <% if owner_relation -%>
 
   # ---------------------------------------------------------------

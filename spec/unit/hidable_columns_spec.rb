@@ -25,7 +25,7 @@ end
 class HidablePostPolicy < Lumina::ResourcePolicy
   self.resource_slug = "posts"
 
-  def hidden_columns(user)
+  def hidden_attributes_for_show(user)
     return ["status", "is_published", "content"] unless user
     return [] if user.id == 1 # admin
     ["status"] # regular user
@@ -35,7 +35,7 @@ end
 class HidablePostWithAdditionalPolicy < Lumina::ResourcePolicy
   self.resource_slug = "posts"
 
-  def hidden_columns(user)
+  def hidden_attributes_for_show(user)
     return ["content"] unless user
     []
   end
@@ -148,7 +148,7 @@ RSpec.describe Lumina::HidableColumns do
       expect { post.hidden_columns_for(nil) }.not_to raise_error
     end
 
-    it "handles policy without hidden_columns method" do
+    it "handles policy without hidden_attributes_for_show method" do
       allow(Pundit::PolicyFinder).to receive(:new).and_return(
         double(policy: Class.new { def initialize(u, r); end })
       )
@@ -156,6 +156,37 @@ RSpec.describe Lumina::HidableColumns do
       post = HidablePost.create!(title: "Test", content: "Content")
       hidden = post.hidden_columns_for(nil)
       expect(hidden).to include("password") # base columns still present
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # permitted_attributes_for_show filtering
+  # ------------------------------------------------------------------
+
+  describe "permitted_attributes_for_show filtering" do
+    # Create a policy that uses permitted_attributes_for_show whitelist
+    it "hides columns not in permitted list" do
+      policy_class = Class.new(Lumina::ResourcePolicy) do
+        self.resource_slug = "posts"
+
+        def permitted_attributes_for_show(user)
+          return ['id', 'title'] unless user
+          ['*']
+        end
+      end
+
+      allow(Pundit::PolicyFinder).to receive(:new).and_return(
+        double(policy: policy_class)
+      )
+
+      post = HidablePost.create!(title: "Test", content: "Content", status: "draft")
+      json = post.as_lumina_json(nil) # guest user
+
+      expect(json).to have_key("id")
+      expect(json).to have_key("title")
+      expect(json).not_to have_key("content")
+      expect(json).not_to have_key("status")
+      expect(json).not_to have_key("blog_id")
     end
   end
 end

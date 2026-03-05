@@ -3,66 +3,30 @@
 require "spec_helper"
 
 # --------------------------------------------------------------------------
-# Test Models
+# Test Policies for policy-driven validation
 # --------------------------------------------------------------------------
 
-class RoleTestPost < ActiveRecord::Base
-  include Lumina::HasValidation
-  include Lumina::HidableColumns
+class PolicyDrivenPostPolicy < Lumina::ResourcePolicy
+  self.resource_slug = "posts"
 
-  self.table_name = "posts"
+  def permitted_attributes_for_create(user)
+    if has_role?(user, 'admin')
+      ['*']
+    else
+      ['title', 'content']
+    end
+  end
 
-  lumina_validation_rules(
-    blog_id: "integer",
-    title: "string|max:255",
-    content: "string",
-    is_published: "boolean"
-  )
-
-  lumina_store_rules(
-    "admin" => { "blog_id" => "required", "title" => "required", "content" => "required", "is_published" => "nullable" },
-    "assistant" => { "title" => "required", "content" => "required" },
-    "*" => { "title" => "required", "content" => "required" }
-  )
-
-  lumina_update_rules(
-    "admin" => { "title" => "sometimes", "content" => "sometimes", "is_published" => "nullable" },
-    "assistant" => { "title" => "sometimes", "content" => "sometimes" },
-    "*" => { "title" => "sometimes", "content" => "sometimes" }
-  )
+  def permitted_attributes_for_update(user)
+    if has_role?(user, 'admin')
+      ['*']
+    else
+      ['title', 'content']
+    end
+  end
 end
 
-class RoleTestPostWithOverride < ActiveRecord::Base
-  include Lumina::HasValidation
-  include Lumina::HidableColumns
-
-  self.table_name = "posts"
-
-  lumina_validation_rules(
-    title: "string|max:255"
-  )
-
-  lumina_store_rules(
-    "admin" => { "title" => "required|string|max:500" }
-  )
-end
-
-class RoleTestNoWildcard < ActiveRecord::Base
-  include Lumina::HasValidation
-  include Lumina::HidableColumns
-
-  self.table_name = "posts"
-
-  lumina_validation_rules(
-    title: "string|max:255"
-  )
-
-  lumina_store_rules(
-    "admin" => { "title" => "required" }
-  )
-end
-
-RSpec.describe "RoleBasedValidation" do
+RSpec.describe "PolicyDrivenValidation" do
   # ------------------------------------------------------------------
   # Helpers
   # ------------------------------------------------------------------
@@ -76,111 +40,65 @@ RSpec.describe "RoleBasedValidation" do
   end
 
   # ------------------------------------------------------------------
-  # Legacy format: flat array of field names
+  # Policy-driven field permissions
   # ------------------------------------------------------------------
 
-  describe "legacy format" do
-    it "validates store with static rules" do
-      # Post has '*' => { title: required, content: required }
-      post = Post.new
-      result = post.validate_store({ "title" => "A title", "content" => "Some content" })
-      expect(result[:valid]).to be true
-      expect(result[:validated]).to have_key("title")
-      expect(result[:validated]).to have_key("content")
-    end
-
-    it "fails when required field is missing" do
-      post = Post.new
-      result = post.validate_store({ "title" => "Only title" })
-      expect(result[:valid]).to be false
-      expect(result[:errors]).to have_key("content")
-    end
-  end
-
-  # ------------------------------------------------------------------
-  # Role-keyed format
-  # ------------------------------------------------------------------
-
-  describe "role-keyed format" do
-    it "admin receives all fields in validated" do
+  describe "policy-driven field permissions" do
+    it "admin can set all fields with wildcard" do
       admin, org = create_user_with_role("admin")
 
-      model = RoleTestPost.new
-      result = model.validate_store(
-        { "blog_id" => 1, "title" => "Post title", "content" => "Content", "is_published" => true },
-        user: admin,
-        organization: org
-      )
+      policy = PolicyDrivenPostPolicy.new(admin, Post)
+      allow(policy).to receive(:current_organization).and_return(org)
 
-      expect(result[:valid]).to be true
-      expect(result[:validated]).to have_key("blog_id")
-      expect(result[:validated]).to have_key("title")
-      expect(result[:validated]).to have_key("content")
-      expect(result[:validated]).to have_key("is_published")
+      permitted = policy.permitted_attributes_for_create(admin)
+      expect(permitted).to eq(['*'])
     end
 
-    it "assistant receives only title and content in validated" do
-      assistant, org = create_user_with_role("assistant", permissions: ["posts.store"])
+    it "non-admin gets restricted fields" do
+      editor, org = create_user_with_role("editor", permissions: ["posts.store"])
 
-      model = RoleTestPost.new
-      result = model.validate_store(
-        { "blog_id" => 1, "title" => "Post title", "content" => "Content", "is_published" => true },
-        user: assistant,
-        organization: org
+      policy = PolicyDrivenPostPolicy.new(editor, Post)
+      allow(policy).to receive(:current_organization).and_return(org)
+
+      permitted = policy.permitted_attributes_for_create(editor)
+      expect(permitted).to eq(['title', 'content'])
+    end
+
+    it "validates only permitted fields" do
+      instance = Post.new
+      result = instance.validate_for_action(
+        { "title" => "Hello", "content" => "World", "is_published" => true },
+        permitted_fields: ['title', 'content']
       )
 
       expect(result[:valid]).to be true
-      expect(result[:validated]).not_to have_key("blog_id")
+      expect(result[:validated]).to have_key("title")
+      expect(result[:validated]).to have_key("content")
       expect(result[:validated]).not_to have_key("is_published")
-      expect(result[:validated]).to have_key("title")
-      expect(result[:validated]).to have_key("content")
     end
 
-    it "wildcard fallback used when role is unknown" do
-      user, org = create_user_with_role("unknown_role")
-
-      model = RoleTestPost.new
-      result = model.validate_store(
-        { "title" => "Post title", "content" => "Content" },
-        user: user,
-        organization: org
+    it "validates all fields for admin (wildcard)" do
+      instance = Post.new
+      result = instance.validate_for_action(
+        { "title" => "Hello", "content" => "World", "is_published" => true },
+        permitted_fields: ['*']
       )
 
       expect(result[:valid]).to be true
-      expect(result[:validated]).to have_key("title")
-      expect(result[:validated]).to have_key("content")
-      expect(result[:validated]).not_to have_key("blog_id")
-    end
-
-    it "no match and no wildcard returns empty validated" do
-      assistant, org = create_user_with_role("assistant", permissions: ["posts.store"])
-
-      model = RoleTestNoWildcard.new
-      result = model.validate_store(
-        { "title" => "Any" },
-        user: assistant,
-        organization: org
-      )
-
-      # No matching role rules, no wildcard → empty
-      expect(result[:valid]).to be true
-      expect(result[:validated]).to be_empty
+      expect(result[:validated]).to have_key("is_published")
     end
   end
 
   # ------------------------------------------------------------------
-  # Presence merging
+  # ActiveModel validation still works
   # ------------------------------------------------------------------
 
-  describe "presence merging" do
-    it "fails when required field is blank" do
-      assistant, org = create_user_with_role("assistant", permissions: ["posts.store"])
-
-      model = RoleTestPost.new
-      result = model.validate_store(
-        { "title" => "", "content" => "Content" },
-        user: assistant,
-        organization: org
+  describe "ActiveModel validation" do
+    it "enforces model-level length constraint" do
+      instance = Post.new
+      result = instance.validate_for_action(
+        { "title" => "a" * 256, "content" => "Content" },
+        permitted_fields: ['*']
       )
 
       expect(result[:valid]).to be false
@@ -189,141 +107,28 @@ RSpec.describe "RoleBasedValidation" do
   end
 
   # ------------------------------------------------------------------
-  # Full rule override (value contains |)
+  # has_role? integration
   # ------------------------------------------------------------------
 
-  describe "full rule override" do
-    it "replaces base rule when override has pipe-delimited rules" do
+  describe "has_role? integration" do
+    it "correctly identifies admin role" do
       admin, org = create_user_with_role("admin")
 
-      model = RoleTestPostWithOverride.new
-      result = model.validate_store(
-        { "title" => "a" * 400 },
-        user: admin,
-        organization: org
-      )
+      policy = PolicyDrivenPostPolicy.new(admin, Post)
+      allow(policy).to receive(:current_organization).and_return(org)
 
-      # max:500 from override allows up to 500 chars
-      expect(result[:valid]).to be true
+      expect(policy.has_role?(admin, 'admin')).to be true
+      expect(policy.has_role?(admin, 'editor')).to be false
     end
 
-    it "enforces override constraint" do
-      admin, org = create_user_with_role("admin")
+    it "correctly identifies non-admin role" do
+      editor, org = create_user_with_role("editor", permissions: ["posts.store"])
 
-      model = RoleTestPostWithOverride.new
-      result = model.validate_store(
-        { "title" => "a" * 501 },
-        user: admin,
-        organization: org
-      )
+      policy = PolicyDrivenPostPolicy.new(editor, Post)
+      allow(policy).to receive(:current_organization).and_return(org)
 
-      expect(result[:valid]).to be false
-      expect(result[:errors]).to have_key("title")
-    end
-  end
-
-  # ------------------------------------------------------------------
-  # User without role falls back to wildcard
-  # ------------------------------------------------------------------
-
-  describe "user without role" do
-    it "falls back to wildcard" do
-      model = RoleTestPost.new
-      result = model.validate_store(
-        { "title" => "Post title", "content" => "Content" },
-        user: nil
-      )
-
-      expect(result[:valid]).to be true
-      expect(result[:validated]).to have_key("title")
-      expect(result[:validated]).to have_key("content")
-    end
-  end
-
-  # ------------------------------------------------------------------
-  # Integration: real user + organization role resolution
-  # ------------------------------------------------------------------
-
-  describe "integration with real user and organization" do
-    it "resolves role from user_roles and validates accordingly" do
-      org = Organization.create!(name: "RB Int Org", slug: "rb-int-org")
-      admin_role = Role.create!(name: "Admin", slug: "admin", permissions: ["*"])
-      assistant_role = Role.create!(name: "Assistant", slug: "assistant", permissions: ["posts.store"])
-
-      admin_user = User.create!(name: "Admin User", email: "admin-rb@test.com")
-      assistant_user = User.create!(name: "Assistant User", email: "assistant-rb@test.com")
-
-      UserRole.create!(user: admin_user, organization: org, role: admin_role)
-      UserRole.create!(user: assistant_user, organization: org, role: assistant_role)
-
-      model = RoleTestPost.new
-
-      # Admin gets all fields
-      admin_result = model.validate_store(
-        { "blog_id" => 1, "title" => "T", "content" => "C", "is_published" => true },
-        user: admin_user,
-        organization: org
-      )
-      expect(admin_result[:valid]).to be true
-      expect(admin_result[:validated]).to have_key("is_published")
-
-      # Assistant only gets title and content
-      assistant_result = model.validate_store(
-        { "title" => "T", "content" => "C" },
-        user: assistant_user,
-        organization: org
-      )
-      expect(assistant_result[:valid]).to be true
-      expect(assistant_result[:validated]).not_to have_key("is_published")
-    end
-  end
-
-  # ------------------------------------------------------------------
-  # Update validation with role
-  # ------------------------------------------------------------------
-
-  describe "update validation with role" do
-    it "allows partial updates for admin" do
-      admin, org = create_user_with_role("admin")
-
-      model = RoleTestPost.new
-      result = model.validate_update(
-        { "title" => "Updated" },
-        user: admin,
-        organization: org
-      )
-
-      expect(result[:valid]).to be true
-      expect(result[:validated]["title"]).to eq("Updated")
-    end
-
-    it "admin can update is_published" do
-      admin, org = create_user_with_role("admin")
-
-      model = RoleTestPost.new
-      result = model.validate_update(
-        { "is_published" => true },
-        user: admin,
-        organization: org
-      )
-
-      expect(result[:valid]).to be true
-      expect(result[:validated]).to have_key("is_published")
-    end
-
-    it "assistant cannot update is_published" do
-      assistant, org = create_user_with_role("assistant", permissions: ["posts.update"])
-
-      model = RoleTestPost.new
-      result = model.validate_update(
-        { "is_published" => true },
-        user: assistant,
-        organization: org
-      )
-
-      # is_published not in assistant update rules, so not validated/returned
-      expect(result[:valid]).to be true
-      expect(result[:validated]).not_to have_key("is_published")
+      expect(policy.has_role?(editor, 'editor')).to be true
+      expect(policy.has_role?(editor, 'admin')).to be false
     end
   end
 end
