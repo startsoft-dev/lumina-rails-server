@@ -32,8 +32,8 @@ RSpec.describe "PolicyDrivenValidation" do
   # ------------------------------------------------------------------
 
   def create_user_with_role(role_slug, permissions: ["*"])
-    user = User.create!(name: "RB User", email: "rb-#{rand(10000)}@test.com")
-    org = Organization.create!(name: "RB Org", slug: "rb-org-#{rand(10000)}")
+    user = User.create!(name: "RB User", email: "rb-#{SecureRandom.uuid}@test.com")
+    org = Organization.create!(name: "RB Org", slug: "rb-org-#{SecureRandom.uuid}")
     role = Role.create!(name: role_slug.capitalize, slug: role_slug, permissions: permissions)
     UserRole.create!(user: user, organization: org, role: role)
     [user, org]

@@ -8,13 +8,14 @@ RSpec.describe Lumina::HasPermissions do
   # ------------------------------------------------------------------
 
   def create_user_with_permissions(permissions, user_id: nil, org: nil)
+    id = user_id || SecureRandom.uuid
     user = User.create!(
-      name: "User #{user_id || rand(1000)}",
-      email: "user#{user_id || rand(1000)}@example.com"
+      name: "User #{id}",
+      email: "user-#{id}@example.com"
     )
 
-    org ||= Organization.create!(name: "Test Org", slug: "test-org-#{rand(1000)}")
-    role = Role.create!(name: "Test Role", slug: "test-role-#{rand(1000)}", permissions: permissions)
+    org ||= Organization.create!(name: "Test Org", slug: "test-org-#{SecureRandom.uuid}")
+    role = Role.create!(name: "Test Role", slug: "test-role-#{SecureRandom.uuid}", permissions: permissions)
     UserRole.create!(user: user, organization: org, role: role)
 
     [user, org]
@@ -23,7 +24,7 @@ RSpec.describe Lumina::HasPermissions do
   def create_user_without_permissions
     User.create!(
       name: "No Perms User",
-      email: "noperms#{rand(1000)}@example.com"
+      email: "noperms-#{SecureRandom.uuid}@example.com"
     )
   end
 
@@ -191,8 +192,8 @@ RSpec.describe Lumina::HasPermissions do
   describe "global permissions fallback" do
     def create_user_with_global_permissions(permissions)
       User.create!(
-        name: "Global User #{rand(1000)}",
-        email: "global#{rand(1000)}@example.com",
+        name: "Global User",
+        email: "global-#{SecureRandom.uuid}@example.com",
         global_permissions: permissions
       )
     end
@@ -231,7 +232,7 @@ RSpec.describe Lumina::HasPermissions do
     end
 
     it "does not use global_permissions when organization is provided" do
-      org = Organization.create!(name: "Test Org GP", slug: "test-org-gp-#{rand(1000)}")
+      org = Organization.create!(name: "Test Org GP", slug: "test-org-gp-#{SecureRandom.uuid}")
       user = create_user_with_global_permissions(["*"])
 
       expect(user.has_permission?("posts.index", org)).to be false
@@ -248,7 +249,7 @@ RSpec.describe Lumina::HasPermissions do
     it "returns false for nil global_permissions" do
       user = User.create!(
         name: "No GP User",
-        email: "nogp#{rand(1000)}@example.com",
+        email: "nogp-#{SecureRandom.uuid}@example.com",
         global_permissions: nil
       )
 

@@ -36,15 +36,16 @@ RSpec.describe Lumina::ResourcePolicy do
   # ------------------------------------------------------------------
 
   def create_user_with_permissions(permissions)
-    user = User.create!(name: "Policy User", email: "policy#{rand(1000)}@example.com")
-    org = Organization.create!(name: "Policy Org", slug: "policy-org-#{rand(1000)}")
-    role = Role.create!(name: "Policy Role", slug: "policy-role-#{rand(1000)}", permissions: permissions)
+    id = SecureRandom.uuid
+    user = User.create!(name: "Policy User", email: "policy-#{id}@example.com")
+    org = Organization.create!(name: "Policy Org", slug: "policy-org-#{id}")
+    role = Role.create!(name: "Policy Role", slug: "policy-role-#{id}", permissions: permissions)
     UserRole.create!(user: user, organization: org, role: role)
     user
   end
 
   def create_user_without_permissions
-    User.create!(name: "No Perms", email: "noperms-policy#{rand(1000)}@example.com")
+    User.create!(name: "No Perms", email: "noperms-policy-#{SecureRandom.uuid}@example.com")
   end
 
   # ------------------------------------------------------------------
