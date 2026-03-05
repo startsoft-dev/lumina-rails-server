@@ -37,7 +37,12 @@ RSpec.describe Lumina::ResourcePolicy do
 
   def create_user_with_permissions(permissions)
     id = SecureRandom.uuid
-    user = User.create!(name: "Policy User", email: "policy-#{id}@example.com")
+    User.create!(name: "Policy User", email: "policy-#{id}@example.com", permissions: permissions)
+  end
+
+  def create_user_with_org_permissions(permissions)
+    id = SecureRandom.uuid
+    user = User.create!(name: "Policy User", email: "policy-#{id}@example.com", permissions: permissions)
     org = Organization.create!(name: "Policy Org", slug: "policy-org-#{id}")
     role = Role.create!(name: "Policy Role", slug: "policy-role-#{id}", permissions: permissions)
     UserRole.create!(user: user, organization: org, role: role)
@@ -247,7 +252,7 @@ RSpec.describe Lumina::ResourcePolicy do
     end
 
     it "returns true when user has matching role" do
-      user = create_user_with_permissions(["*"])
+      user = create_user_with_org_permissions(["*"])
       # Need org in RequestStore for has_role? to work
       policy = described_class.new(user, Post.new)
       org = Organization.last
@@ -256,7 +261,7 @@ RSpec.describe Lumina::ResourcePolicy do
     end
 
     it "returns false when user has different role" do
-      user = create_user_with_permissions(["*"])
+      user = create_user_with_org_permissions(["*"])
       policy = described_class.new(user, Post.new)
       org = Organization.last
       allow(policy).to receive(:current_organization).and_return(org)

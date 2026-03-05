@@ -28,8 +28,16 @@ RSpec.describe Lumina::HasPermissions do
     )
   end
 
+  def create_user_with_direct_permissions(permissions)
+    User.create!(
+      name: "Direct Perm User",
+      email: "direct-#{SecureRandom.uuid}@example.com",
+      permissions: permissions
+    )
+  end
+
   # ------------------------------------------------------------------
-  # Basic permission checks
+  # Basic permission checks (org-scoped via role)
   # ------------------------------------------------------------------
 
   describe "#has_permission?" do
@@ -127,7 +135,7 @@ RSpec.describe Lumina::HasPermissions do
   end
 
   # ------------------------------------------------------------------
-  # User without any user_roles
+  # User without any permissions
   # ------------------------------------------------------------------
 
   describe "user without user_roles" do
@@ -140,7 +148,7 @@ RSpec.describe Lumina::HasPermissions do
   end
 
   # ------------------------------------------------------------------
-  # Organization-scoped permissions
+  # Organization-scoped permissions (via role)
   # ------------------------------------------------------------------
 
   describe "organization-scoped permissions" do
@@ -186,36 +194,28 @@ RSpec.describe Lumina::HasPermissions do
   end
 
   # ------------------------------------------------------------------
-  # Global permissions fallback
+  # User-level permissions (non-org-scoped, via users.permissions)
   # ------------------------------------------------------------------
 
-  describe "global permissions fallback" do
-    def create_user_with_global_permissions(permissions)
-      User.create!(
-        name: "Global User",
-        email: "global-#{SecureRandom.uuid}@example.com",
-        global_permissions: permissions
-      )
-    end
-
-    it "grants access via global_permissions when user has no org roles" do
-      user = create_user_with_global_permissions(["posts.index", "posts.show"])
+  describe "user-level permissions" do
+    it "grants access via users.permissions when no org context" do
+      user = create_user_with_direct_permissions(["posts.index", "posts.show"])
 
       expect(user.has_permission?("posts.index")).to be true
       expect(user.has_permission?("posts.show")).to be true
       expect(user.has_permission?("posts.store")).to be false
     end
 
-    it "supports wildcard * in global_permissions" do
-      user = create_user_with_global_permissions(["*"])
+    it "supports wildcard * in users.permissions" do
+      user = create_user_with_direct_permissions(["*"])
 
       expect(user.has_permission?("posts.index")).to be true
       expect(user.has_permission?("blogs.destroy")).to be true
       expect(user.has_permission?("anything.here")).to be true
     end
 
-    it "supports resource wildcard in global_permissions" do
-      user = create_user_with_global_permissions(["posts.*"])
+    it "supports resource wildcard in users.permissions" do
+      user = create_user_with_direct_permissions(["posts.*"])
 
       expect(user.has_permission?("posts.index")).to be true
       expect(user.has_permission?("posts.store")).to be true
@@ -223,52 +223,56 @@ RSpec.describe Lumina::HasPermissions do
       expect(user.has_permission?("blogs.index")).to be false
     end
 
-    it "does not use global_permissions when user has org roles" do
+    it "org context checks role permissions not user permissions" do
       user, org = create_user_with_permissions(["posts.index"])
-      user.update!(global_permissions: ["*"])
+      user.update!(permissions: ["*"])
 
+      # With org: uses role.permissions (limited), not users.permissions
       expect(user.has_permission?("posts.index", org)).to be true
       expect(user.has_permission?("posts.store", org)).to be false
     end
 
-    it "does not use global_permissions when organization is provided" do
+    it "org context uses role permissions even when user has broad direct permissions" do
+      user = User.create!(
+        name: "Dual User",
+        email: "dual-#{SecureRandom.uuid}@example.com",
+        permissions: ["posts.index"]
+      )
+
+      org = Organization.create!(name: "Check Org", slug: "check-org-#{SecureRandom.uuid}")
+      role = Role.create!(name: "Full", slug: "full-#{SecureRandom.uuid}", permissions: ["*"])
+      UserRole.create!(user: user, organization: org, role: role)
+
+      # With org context: uses role.permissions (full access)
+      expect(user.has_permission?("posts.store", org)).to be true
+      expect(user.has_permission?("anything.here", org)).to be true
+
+      # Without org context: uses users.permissions (limited)
+      expect(user.has_permission?("posts.index")).to be true
+      expect(user.has_permission?("posts.store")).to be false
+    end
+
+    it "does not use users.permissions when organization is provided" do
       org = Organization.create!(name: "Test Org GP", slug: "test-org-gp-#{SecureRandom.uuid}")
-      user = create_user_with_global_permissions(["*"])
+      user = create_user_with_direct_permissions(["*"])
 
       expect(user.has_permission?("posts.index", org)).to be false
     end
 
-    it "falls back to global_permissions when user has no user_roles and no org provided" do
-      user = create_user_with_global_permissions(["posts.index", "blogs.*"])
-
-      expect(user.has_permission?("posts.index")).to be true
-      expect(user.has_permission?("blogs.store")).to be true
-      expect(user.has_permission?("posts.store")).to be false
-    end
-
-    it "returns false for nil global_permissions" do
+    it "returns false for nil permissions" do
       user = User.create!(
-        name: "No GP User",
-        email: "nogp-#{SecureRandom.uuid}@example.com",
-        global_permissions: nil
+        name: "No Perms User",
+        email: "noperms-#{SecureRandom.uuid}@example.com",
+        permissions: nil
       )
 
       expect(user.has_permission?("posts.index")).to be false
     end
 
-    it "returns false for empty global_permissions" do
-      user = create_user_with_global_permissions([])
+    it "returns false for empty permissions" do
+      user = create_user_with_direct_permissions([])
 
       expect(user.has_permission?("posts.index")).to be false
-    end
-
-    it "prefers org-scoped role over global_permissions" do
-      user, _org = create_user_with_permissions(["posts.index"])
-      user.update!(global_permissions: ["*"])
-
-      # Without org: should use the first user_role (which only has posts.index)
-      expect(user.has_permission?("posts.index")).to be true
-      expect(user.has_permission?("posts.destroy")).to be false
     end
   end
 end

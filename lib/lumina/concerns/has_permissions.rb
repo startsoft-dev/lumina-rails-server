@@ -16,13 +16,21 @@ module Lumina
   #   - '*' grants access to everything
   #   - 'posts.*' grants access to all actions on posts
   #
-  # Global permissions fallback:
-  #   Users without organization-scoped roles can have a `global_permissions`
-  #   JSON attribute on the user model for non-org-scoped authorization.
+  # Two permission sources:
+  #   - users.permissions: used for non-tenant route groups (no organization context).
+  #     Stored as a JSON array directly on the user model.
+  #   - role.permissions (via user_roles): used for tenant route groups (organization context present).
+  #     Resolved per-organization via the user_roles → role association.
+  #
+  # Resolution:
+  #   1. When an organization is provided (tenant route group) → checks role.permissions
+  #      for that specific organization via user_roles.
+  #   2. When no organization is provided (non-tenant route group) → checks users.permissions
+  #      directly on the user model.
   module HasPermissions
     extend ActiveSupport::Concern
 
-    # Check if the user has a specific permission in the given organization.
+    # Check if the user has a specific permission.
     #
     # @param permission [String] Permission string like 'posts.index'
     # @param organization [Object, nil] Organization to check permissions for
@@ -30,25 +38,26 @@ module Lumina
     def has_permission?(permission, organization = nil)
       return false if permission.blank?
 
-      user_role = find_user_role(organization)
+      if organization
+        # Tenant route group: check role.permissions for this organization
+        user_role = find_user_role(organization)
 
-      if user_role
-        role = user_role.respond_to?(:role) ? user_role.role : nil
-        return false unless role
+        if user_role
+          role = user_role.respond_to?(:role) ? user_role.role : nil
+          return false unless role
 
-        permissions = role_permissions(role)
-        return false if permissions.blank?
+          permissions = parse_permissions(role.respond_to?(:permissions) ? role.permissions : nil)
+          return false if permissions.blank?
 
-        return matches_permission?(permission, permissions)
+          return matches_permission?(permission, permissions)
+        end
+
+        return false
       end
 
-      # Fallback: check global_permissions when no org context and no user_roles found
-      if !organization && has_global_permissions?
-        global_perms = parse_global_permissions
-        return matches_permission?(permission, global_perms)
-      end
-
-      false
+      # Non-tenant route group: check users.permissions directly
+      user_perms = parse_permissions(respond_to?(:permissions) ? self.permissions : nil)
+      matches_permission?(permission, user_perms)
     end
 
     # Get the role slug for validation purposes.
@@ -77,12 +86,7 @@ module Lumina
       false
     end
 
-    def has_global_permissions?
-      respond_to?(:global_permissions) && !global_permissions.nil?
-    end
-
-    def parse_global_permissions
-      perms = global_permissions
+    def parse_permissions(perms)
       return [] if perms.blank?
 
       if perms.is_a?(String)
@@ -100,31 +104,9 @@ module Lumina
 
     def find_user_role(organization)
       return nil unless respond_to?(:user_roles)
+      return nil unless organization
 
-      if organization
-        user_roles.find_by(organization_id: organization.id)
-      else
-        user_roles.first
-      end
-    end
-
-    def role_permissions(role)
-      return [] unless role.respond_to?(:permissions)
-
-      perms = role.permissions
-      return [] if perms.blank?
-
-      if perms.is_a?(String)
-        begin
-          JSON.parse(perms)
-        rescue JSON::ParserError
-          []
-        end
-      elsif perms.is_a?(Array)
-        perms
-      else
-        []
-      end
+      user_roles.find_by(organization_id: organization.id)
     end
   end
 end

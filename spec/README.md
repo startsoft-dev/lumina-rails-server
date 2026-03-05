@@ -30,7 +30,7 @@ bundle exec rspec spec/unit/resource_policy_spec.rb:55
 
 - **Database**: SQLite `:memory:` (configured in `spec/spec_helper.rb`)
 - **Framework**: RSpec with in-memory ActiveRecord (no full Rails app required)
-- **Schema**: Defined inline in `spec_helper.rb` — organizations, roles, users (with `global_permissions`), user_roles, posts, blogs, comments, audit_logs, organization_invitations
+- **Schema**: Defined inline in `spec_helper.rb` — organizations, roles, users (with `permissions`), user_roles, posts, blogs, comments, audit_logs, organization_invitations
 - **Test Models**: Defined inline in `spec_helper.rb` (Organization, Role, UserRole, User, Post, Blog, Comment) and within individual spec files
 - **Test Policies**: Defined inline in spec files (PostPolicy, BlogPolicy, and per-test policies)
 - **Default Config**: Each test starts with `Lumina.reset_configuration!` followed by a default config with `:posts`, `:blogs` models and a `:default` route group
@@ -180,7 +180,7 @@ Tests for `Lumina::HasValidation` — role-based validation rules, legacy format
 
 ### `has_permissions_spec.rb`
 
-Tests for `Lumina::HasPermissions` concern on User model — exact permissions, wildcards, organization scoping, global permissions fallback.
+Tests for `Lumina::HasPermissions` concern on User model — exact permissions, wildcards, organization scoping, user-level permissions.
 
 #### Basic Permission Checks
 
@@ -223,19 +223,18 @@ Tests for `Lumina::HasPermissions` concern on User model — exact permissions, 
 | `returns the role slug` | `role_slug_for_validation(org)` returns the role slug string |
 | `returns nil when no roles` | User without roles returns nil |
 
-#### Global Permissions Fallback
+#### User-Level Permissions (Non-Org-Scoped)
 
 | Test | What it verifies |
 |------|-----------------|
-| `grants access via global_permissions` | User without org roles uses `global_permissions` JSON attribute |
-| `supports wildcard * in global_permissions` | `['*']` grants all access globally |
-| `supports resource wildcard` | `['posts.*']` grants all post actions globally |
-| `does not use global_permissions when user has org roles` | Org-scoped roles take precedence over global_permissions |
-| `does not use global_permissions when organization is provided` | Explicit org context bypasses global_permissions |
-| `falls back to global_permissions without org context` | No org + no user_roles triggers global_permissions check |
-| `returns false for nil global_permissions` | Nil attribute returns false |
-| `returns false for empty global_permissions` | Empty array returns false |
-| `prefers org-scoped role over global_permissions` | User with both org role and global_permissions uses org role |
+| `grants access via users.permissions when no org context` | User-level `permissions` JSON attribute checked when no org |
+| `supports wildcard * in users.permissions` | `['*']` grants all access without org context |
+| `supports resource wildcard in users.permissions` | `['posts.*']` grants all post actions without org context |
+| `org context checks role permissions not user permissions` | With org present, role.permissions used even if user has broad direct permissions |
+| `org context uses role permissions even when user has broad direct permissions` | Both paths exercised: org → role, no org → user |
+| `does not use users.permissions when organization is provided` | Explicit org context bypasses users.permissions |
+| `returns false for nil permissions` | Nil `permissions` attribute returns false |
+| `returns false for empty permissions` | Empty array `permissions` returns false |
 
 ---
 

@@ -60,7 +60,7 @@ ActiveRecord::Schema.define do
     t.string :reset_password_token
     t.datetime :reset_password_sent_at
     t.datetime :email_verified_at
-    t.json :global_permissions
+    t.json :permissions
     t.timestamps
   end
   add_index :users, :email, unique: true

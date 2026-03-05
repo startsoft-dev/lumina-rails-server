@@ -216,11 +216,8 @@ RSpec.describe "SoftDelete" do
 
   describe "permission checks" do
     def create_user_with_permissions(permissions)
-      user = User.create!(name: "SD User", email: "sd-user-#{SecureRandom.uuid}@test.com")
-      org = Organization.create!(name: "SD Org", slug: "sd-org-#{SecureRandom.uuid}")
-      role = Role.create!(name: "SD Role", slug: "sd-role-#{SecureRandom.uuid}", permissions: permissions)
-      UserRole.create!(user: user, organization: org, role: role)
-      [user, org]
+      user = User.create!(name: "SD User", email: "sd-user-#{SecureRandom.uuid}@test.com", permissions: permissions)
+      [user, nil]
     end
 
     it "checks trashed permission via policy" do
