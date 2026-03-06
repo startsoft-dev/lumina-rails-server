@@ -1,17 +1,16 @@
-name: Tests
+name: CI
 
 on:
   push:
-    branches: [main, master]
+    branches: ['**']
   pull_request:
-    branches: [main, master]
+    branches: ['**']
 
 jobs:
   tests:
     runs-on: ubuntu-latest
 
     strategy:
-      fail-fast: true
       matrix:
         ruby: ['3.3', '3.4']
 

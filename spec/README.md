@@ -686,6 +686,67 @@ Tests for the subdomain multi-tenant Rack middleware (`org.example.com/api/resou
 
 ---
 
+## Authentication Tests
+
+### `authentication_spec.rb`
+
+Integration tests for all authentication endpoints in `Lumina::AuthController`. These tests dispatch directly to the controller with mock requests, testing the full auth flow including token generation, password management, and invitation-based registration.
+
+#### Login — `POST /api/auth/login`
+
+| Test | What it verifies |
+|------|-----------------|
+| `returns token and organization slug with valid credentials` | Valid email/password returns 200 with token and org slug |
+| `returns 401 with invalid password` | Wrong password returns 401 with "Invalid credentials" |
+| `returns 401 with non-existent email` | Non-existent email returns 401 |
+| `returns null organization slug when user has no organizations` | User without orgs gets `organization_slug: null` |
+| `returns 401 when email is blank` | Blank email returns 401 |
+| `returns 401 when password is blank` | Blank password returns 401 |
+| `stores api_token on user after login` | Token stored in DB matches response token |
+
+#### Logout — `POST /api/auth/logout`
+
+| Test | What it verifies |
+|------|-----------------|
+| `invalidates the api token` | Old token replaced, returns 200 |
+| `returns 401 when not authenticated` | No token returns 401 |
+| `returns 401 with invalid token` | Invalid Bearer token returns 401 |
+
+#### Password Recovery — `POST /api/auth/password/recover`
+
+| Test | What it verifies |
+|------|-----------------|
+| `returns success and sets reset token for existing email` | Token and timestamp stored on user, returns 200 |
+| `returns success even for non-existent email (prevents enumeration)` | Always returns 200 regardless of email existence |
+| `returns 422 when email is blank` | Blank email returns validation error |
+
+#### Password Reset — `POST /api/auth/password/reset`
+
+| Test | What it verifies |
+|------|-----------------|
+| `resets password with valid token` | Password digest changed, reset fields cleared, returns 200 |
+| `returns 400 with invalid token` | Wrong token returns "Token is invalid or expired." |
+| `returns 400 with expired token (older than 1 hour)` | Token older than 1 hour returns 400 |
+| `returns 422 when required fields are missing` | Missing fields returns validation errors |
+| `returns 422 when password confirmation does not match` | Mismatched confirmation returns 422 |
+| `returns 422 when password is shorter than 8 characters` | Short password returns 422 |
+| `returns 400 when email does not exist` | Non-existent email returns 400 |
+
+#### Registration with Invitation — `POST /api/auth/register`
+
+| Test | What it verifies |
+|------|-----------------|
+| `registers user with valid invitation` | User created, invitation accepted, user added to org, returns 201 |
+| `returns 404 with invalid token` | Non-existent token returns 404 |
+| `returns 422 with expired invitation` | Expired invitation returns 422, status updated |
+| `returns 422 when email does not match invitation` | Email mismatch returns 422 |
+| `returns 422 when required fields are missing` | Missing fields returns validation errors |
+| `returns 422 when email is already taken` | Duplicate email returns 422 |
+| `returns 422 when password confirmation does not match` | Mismatched confirmation returns 422 |
+| `returns 422 when password is shorter than 8 characters` | Short password returns 422 |
+
+---
+
 ## Test Summary
 
 | Suite | File | Tests |
@@ -710,6 +771,7 @@ Tests for the subdomain multi-tenant Rack middleware (`org.example.com/api/resou
 | Feature | `nested_endpoint_spec.rb` | 10 |
 | Feature | `include_authorization_spec.rb` | 10 |
 | Feature | `invitation_link_command_spec.rb` | 12 |
+| Feature | `authentication_spec.rb` | 28 |
 | Middleware | `resolve_organization_from_route_spec.rb` | 6 |
 | Middleware | `resolve_organization_from_subdomain_spec.rb` | 11 |
-| | **Total** | **392** |
+| | **Total** | **420** |
