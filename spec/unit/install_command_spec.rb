@@ -233,7 +233,7 @@ RSpec.describe Lumina::Commands::InstallCommand do
       content += "\n  c.multi_tenant = {\n    organization_identifier_column: \"id\"\n  }\n"
       File.write(config_path, content)
 
-      command.send(:update_config, false, "slug")
+      command.send(:update_config, "slug")
 
       updated = File.read(config_path)
       expect(updated).to include('organization_identifier_column: "slug"')
@@ -241,7 +241,7 @@ RSpec.describe Lumina::Commands::InstallCommand do
 
     it "does nothing if config file does not exist" do
       FileUtils.rm_f(File.join(tmp_dir, "config/initializers/lumina.rb"))
-      expect { command.send(:update_config, false, "id") }.not_to raise_error
+      expect { command.send(:update_config, "id") }.not_to raise_error
     end
   end
 end

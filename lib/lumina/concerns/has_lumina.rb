@@ -82,11 +82,7 @@ module Lumina
         self.lumina_except_actions_list = actions.map(&:to_s)
       end
 
-      # Define the ownership path to organization for nested scoping.
-      # Mirrors Laravel's `public static string $owner = 'post.blog';`
-      #
-      # Usage:
-      #   lumina_owner 'post.blog'  # Comment -> Post -> Blog -> Organization
+      # @internal Auto-detected from belongs_to associations. Do not use.
       def lumina_owner(path)
         self.lumina_owner_path = path.to_s
       end

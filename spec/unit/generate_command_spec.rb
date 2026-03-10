@@ -223,12 +223,12 @@ RSpec.describe Lumina::Commands::GenerateCommand do
       expect(content).to include("Lumina::HasAuditTrail")
     end
 
-    it "includes lumina_owner when owner_relation is set" do
+    it "does not include lumina_owner (auto-detected from belongs_to)" do
       command.send(:write_model_file, "Comment", columns, false, "post",
                    { soft_deletes: false, audit_trail: false })
 
       content = File.read(File.join(tmp_dir, "app/models/comment.rb"))
-      expect(content).to include("lumina_owner 'post'")
+      expect(content).not_to include("lumina_owner")
     end
 
     it "generates belongs_to for references columns" do

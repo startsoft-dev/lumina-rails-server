@@ -35,24 +35,12 @@ module Lumina
           default: "rspec"
         )
 
-        use_subdomain = false
         identifier_column = "id"
         roles = ["admin"]
 
         if features.include?("multi_tenant")
-          strategy = prompt_select(
-            "How should organizations be identified in routes?",
-            {
-              "subdomain" => "Subdomain (e.g., org1.example.com)",
-              "prefix" => "Route prefix (e.g., /api/{org_id}/...)"
-            },
-            default: "subdomain"
-          )
-          use_subdomain = strategy == "subdomain"
-
-          default_id = use_subdomain ? "slug" : "id"
-          identifier_column = ask("What column should be used to identify organizations? [#{default_id}]:")
-          identifier_column = default_id if identifier_column.blank?
+          identifier_column = ask("What column should be used to identify organizations? [id]:")
+          identifier_column = "id" if identifier_column.blank?
 
           roles_input = ask("What roles should your app have? [admin, editor, viewer]:")
           roles_input = "admin, editor, viewer" if roles_input.blank?
@@ -71,7 +59,7 @@ module Lumina
           task("Creating models") { create_multi_tenant_models(roles) }
           task("Creating factories") { create_factories }
           task("Creating policies") { create_policies }
-          task("Updating config") { update_config(use_subdomain, identifier_column) }
+          task("Updating config") { update_config(identifier_column) }
           task("Creating seeders") { create_seeders(roles) }
         end
 
@@ -215,7 +203,7 @@ module Lumina
         end
       end
 
-      def update_config(use_subdomain, identifier_column)
+      def update_config(identifier_column)
         config_path = Rails.root.join("config/initializers/lumina.rb")
         return unless File.exist?(config_path)
 
@@ -236,13 +224,10 @@ module Lumina
         end
 
         # Add tenant route group
-        tenant_prefix = use_subdomain ? "" : ":organization"
-        middleware_line = use_subdomain ? "# middleware: [ResolveOrganizationFromSubdomain]" : "middleware: [ResolveOrganizationFromRoute]"
-
         unless content.include?("c.route_group :tenant")
           content = content.gsub(
             "# c.route_group :default",
-            "c.route_group :tenant, prefix: \"#{tenant_prefix}\", #{middleware_line}, models: :all\n  # c.route_group :default"
+            "c.route_group :tenant, prefix: \":organization\", middleware: [ResolveOrganizationFromRoute], models: :all\n  # c.route_group :default"
           )
         end
 

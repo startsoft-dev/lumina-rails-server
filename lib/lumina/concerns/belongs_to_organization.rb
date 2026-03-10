@@ -9,11 +9,8 @@ module Lumina
   #     include Lumina::BelongsToOrganization
   #   end
   #
-  # For nested ownership (model doesn't have organization_id directly):
-  #   class Comment < ApplicationRecord
-  #     include Lumina::HasLumina
-  #     lumina_owner 'post.blog'  # Comment -> Post -> Blog -> Organization
-  #   end
+  # For nested ownership (model doesn't have organization_id directly),
+  # the path is auto-detected from belongs_to associations.
   module BelongsToOrganization
     extend ActiveSupport::Concern
 

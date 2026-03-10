@@ -101,13 +101,4 @@ class LuminaModel < Lumina::LuminaModel
   #
   # self.additional_hidden_columns = ['api_token', 'stripe_id', 'internal_notes']
 
-  # -----------------------------------------------------------------
-  # Multi-Tenancy / Ownership
-  # -----------------------------------------------------------------
-  #
-  # # Comment -> Post -> Organization
-  # lumina_owner 'post'
-  #
-  # # Comment -> Post -> Blog -> Organization
-  # lumina_owner 'post.blog'
 end

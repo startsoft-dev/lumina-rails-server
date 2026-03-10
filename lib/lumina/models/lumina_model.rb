@@ -267,22 +267,7 @@ module Lumina
     # OWNERSHIP / MULTI-TENANCY
     # =========================================================================
 
-    # @!attribute [rw] lumina_owner_path
-    #   Dot-notation relationship path to the organization owner.
-    #
-    #   Used when this model doesn't have +organization_id+ directly but
-    #   belongs to a parent that does. Lumina traverses the chain to find
-    #   the organization.
-    #
-    #   Set via DSL: +lumina_owner 'post.blog'+
-    #
-    #   @return [String, nil]
-    #   @example
-    #     # Comment -> Post -> Organization
-    #     lumina_owner 'post'
-    #   @example
-    #     # Comment -> Post -> Blog -> Organization
-    #     lumina_owner 'post.blog'
+    # @internal Auto-detected from belongs_to associations.
     self.lumina_owner_path = nil
 
     # =========================================================================
@@ -368,8 +353,8 @@ module Lumina
     #     include Lumina::BelongsToOrganization
     #   end
     #
-    # For nested ownership (e.g. Task -> Project -> Organization):
-    #   lumina_owner 'project'
+    # For nested ownership (e.g. Task -> Project -> Organization),
+    # the path is auto-detected from belongs_to associations.
     # =========================================================================
 
     # =========================================================================

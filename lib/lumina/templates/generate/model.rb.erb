@@ -61,17 +61,10 @@ class <%= name %> < Lumina::LuminaModel
   # Field permissions are controlled by the policy.
   # See: app/policies/<%= name.underscore %>_policy.rb
   # ---------------------------------------------------------------
-<% if owner_relation -%>
-
-  # ---------------------------------------------------------------
-  # Organization scoping (relationship path to the org owner)
-  # ---------------------------------------------------------------
-
-  lumina_owner '<%= owner_relation %>'
-<% end -%>
 
   # ---------------------------------------------------------------
   # Relationships
+  # (Organization scoping is auto-detected from belongs_to associations)
   # ---------------------------------------------------------------
 
 <% columns.select { |c| c[:type] == "references" && c[:foreign_model] }.each do |col| -%>

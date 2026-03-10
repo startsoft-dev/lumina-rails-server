@@ -9,6 +9,9 @@ module Lumina
   class ResourcesController < ActionController::API
     include Pundit::Authorization
 
+    # Cache for auto-detected organization paths (class-level, survives across requests)
+    @@organization_path_cache = {}
+
     before_action :set_model_class
     before_action :authenticate_user!, unless: :public_route_group?
 
@@ -313,7 +316,15 @@ module Lumina
       # Check for explicit owner property
       owner_path = model_class.try(:lumina_owner_path)
       if owner_path.present?
+        return if owner_path == "none" # opt-out
         apply_organization_scope_through_relationship(builder, org, owner_path)
+        return
+      end
+
+      # Auto-detect from belongs_to relationships
+      detected_path = discover_organization_path(model_class)
+      if detected_path.present?
+        apply_organization_scope_through_relationship(builder, org, detected_path)
       end
     end
 
@@ -350,6 +361,90 @@ module Lumina
       if model_class.column_names.include?("organization_id")
         data["organization_id"] = org.id
       end
+    end
+
+    # Recursively discover the relationship path from a model to Organization
+    # by introspecting BelongsTo associations. Returns dot-notation path or nil.
+    #
+    # Results are cached per model class to avoid repeated reflection.
+    def discover_organization_path(klass, visited = [], max_depth = 3)
+      # Return cached result (including nil)
+      if @@organization_path_cache.key?(klass.name)
+        return @@organization_path_cache[klass.name]
+      end
+
+      result = _discover_organization_path_recursive(klass, visited, max_depth)
+      @@organization_path_cache[klass.name] = result
+      result
+    end
+
+    def _discover_organization_path_recursive(klass, visited, max_depth)
+      return nil if max_depth <= 0 || visited.include?(klass.name)
+
+      visited = visited + [klass.name]
+
+      begin
+        associations = klass.reflect_on_all_associations(:belongs_to)
+      rescue StandardError
+        return nil
+      end
+
+      matching_paths = []
+
+      associations.each do |assoc|
+        begin
+          related_class = assoc.klass
+        rescue StandardError
+          next
+        end
+
+        # Direct match: related model IS Organization
+        if related_class.name == "Organization"
+          matching_paths << assoc.name.to_s
+          next
+        end
+
+        # Related model has organization_id column
+        begin
+          if related_class.column_names.include?("organization_id")
+            matching_paths << assoc.name.to_s
+            next
+          end
+        rescue StandardError
+          # Table may not exist yet
+        end
+
+        # Related model includes BelongsToOrganization concern
+        if related_class.include?(Lumina::BelongsToOrganization)
+          matching_paths << assoc.name.to_s
+          next
+        end
+
+        # Related model has explicit lumina_owner_path -- compose the path
+        related_owner = related_class.try(:lumina_owner_path)
+        if related_owner.present? && related_owner != "none"
+          matching_paths << "#{assoc.name}.#{related_owner}"
+          next
+        end
+
+        # Recurse into related model's BelongsTo associations
+        sub_path = _discover_organization_path_recursive(related_class, visited, max_depth - 1)
+        if sub_path.present?
+          matching_paths << "#{assoc.name}.#{sub_path}"
+        end
+      end
+
+      return nil if matching_paths.empty?
+
+      if matching_paths.length > 1
+        Rails.logger.debug(
+          "Lumina: Model #{klass.name} has multiple BelongsTo paths to Organization. " \
+          "Using '#{matching_paths[0]}'. Set lumina_owner explicitly to override. " \
+          "Paths found: #{matching_paths.inspect}"
+        )
+      end
+
+      matching_paths[0]
     end
 
     # ------------------------------------------------------------------
