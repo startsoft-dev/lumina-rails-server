@@ -39,10 +39,15 @@ module Lumina
     def store
       authorize model_class, :create?, policy_class: policy_for(model_class)
 
+      data = params_hash
+
+      # Strip organization_id — it's auto-set by the framework
+      data.delete("organization_id") if current_organization
+
       permitted_fields = resolve_permitted_fields(current_user, "create")
 
       # Check for forbidden fields → 403
-      forbidden = find_forbidden_fields(params_hash, permitted_fields)
+      forbidden = find_forbidden_fields(data, permitted_fields)
       if forbidden.any?
         return render json: {
           message: "You are not allowed to set the following field(s): #{forbidden.join(', ')}"
@@ -50,16 +55,18 @@ module Lumina
       end
 
       model_instance = model_class.new
-      validation = model_instance.validate_for_action(params_hash, permitted_fields: permitted_fields)
+      validation = model_instance.validate_for_action(
+        data, permitted_fields: permitted_fields, organization: current_organization
+      )
 
       unless validation[:valid]
         return render json: { errors: validation[:errors] }, status: :unprocessable_entity
       end
 
-      data = validation[:validated]
-      add_organization_to_data(data)
+      validated = validation[:validated]
+      add_organization_to_data(validated)
 
-      record = model_class.create!(data)
+      record = model_class.create!(validated)
       render json: serialize_record(record), status: :created
     end
 
@@ -88,10 +95,19 @@ module Lumina
       record = find_record
       authorize record, :update?, policy_class: policy_for(record)
 
+      data = params_hash
+
+      # Reject organization_id changes — cross-tenant reassignment is not allowed
+      if current_organization && data.key?("organization_id")
+        return render json: {
+          message: "You are not allowed to change the organization_id."
+        }, status: :forbidden
+      end
+
       permitted_fields = resolve_permitted_fields(current_user, "update")
 
       # Check for forbidden fields → 403
-      forbidden = find_forbidden_fields(params_hash, permitted_fields)
+      forbidden = find_forbidden_fields(data, permitted_fields)
       if forbidden.any?
         return render json: {
           message: "You are not allowed to set the following field(s): #{forbidden.join(', ')}"
@@ -99,7 +115,9 @@ module Lumina
       end
 
       model_instance = model_class.new
-      validation = model_instance.validate_for_action(params_hash, permitted_fields: permitted_fields)
+      validation = model_instance.validate_for_action(
+        data, permitted_fields: permitted_fields, organization: current_organization
+      )
 
       unless validation[:valid]
         return render json: { errors: validation[:errors] }, status: :unprocessable_entity
@@ -313,14 +331,6 @@ module Lumina
         return
       end
 
-      # Check for explicit owner property
-      owner_path = model_class.try(:lumina_owner_path)
-      if owner_path.present?
-        return if owner_path == "none" # opt-out
-        apply_organization_scope_through_relationship(builder, org, owner_path)
-        return
-      end
-
       # Auto-detect from belongs_to relationships
       detected_path = discover_organization_path(model_class)
       if detected_path.present?
@@ -420,13 +430,6 @@ module Lumina
           next
         end
 
-        # Related model has explicit lumina_owner_path -- compose the path
-        related_owner = related_class.try(:lumina_owner_path)
-        if related_owner.present? && related_owner != "none"
-          matching_paths << "#{assoc.name}.#{related_owner}"
-          next
-        end
-
         # Recurse into related model's BelongsTo associations
         sub_path = _discover_organization_path_recursive(related_class, visited, max_depth - 1)
         if sub_path.present?
@@ -439,7 +442,7 @@ module Lumina
       if matching_paths.length > 1
         Rails.logger.debug(
           "Lumina: Model #{klass.name} has multiple BelongsTo paths to Organization. " \
-          "Using '#{matching_paths[0]}'. Set lumina_owner explicitly to override. " \
+          "Using '#{matching_paths[0]}'. " \
           "Paths found: #{matching_paths.inspect}"
         )
       end

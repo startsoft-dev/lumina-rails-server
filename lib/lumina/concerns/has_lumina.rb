@@ -34,7 +34,6 @@ module Lumina
       class_attribute :lumina_model_middleware, default: []
       class_attribute :lumina_middleware_actions_map, default: {}
       class_attribute :lumina_except_actions_list, default: []
-      class_attribute :lumina_owner_path, default: nil
     end
 
     class_methods do
@@ -80,11 +79,6 @@ module Lumina
 
       def lumina_except_actions(*actions)
         self.lumina_except_actions_list = actions.map(&:to_s)
-      end
-
-      # @internal Auto-detected from belongs_to associations. Do not use.
-      def lumina_owner(path)
-        self.lumina_owner_path = path.to_s
       end
 
       # Check if model uses soft deletes (Discard gem)

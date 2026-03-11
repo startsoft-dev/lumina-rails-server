@@ -80,9 +80,10 @@ module Lumina
         if value.to_s.include?(",")
           # Multiple values: OR condition
           values = value.to_s.split(",").map(&:strip)
+          values = coerce_filter_values(key, values)
           @scope = @scope.where(key => values)
         else
-          @scope = @scope.where(key => value)
+          @scope = @scope.where(key => coerce_filter_value(key, value))
         end
       end
     end
@@ -230,6 +231,28 @@ module Lumina
       end
 
       @scope = @scope.includes(*includes_list) if includes_list.any?
+    end
+
+    # Coerce a single filter value to the column's type (e.g. string → integer).
+    def coerce_filter_value(column, value)
+      col = model_class.columns_hash[column]
+      return value unless col
+
+      case col.type
+      when :integer, :bigint
+        value.to_s.match?(/\A-?\d+\z/) ? value.to_i : value
+      when :float, :decimal
+        value.to_s.match?(/\A-?\d+(\.\d+)?\z/) ? value.to_f : value
+      when :boolean
+        ActiveModel::Type::Boolean.new.cast(value)
+      else
+        value
+      end
+    end
+
+    # Coerce an array of filter values.
+    def coerce_filter_values(column, values)
+      values.map { |v| coerce_filter_value(column, v) }
     end
 
     # Resolve an include segment to the base relationship name.
