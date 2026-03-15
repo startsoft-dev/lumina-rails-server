@@ -52,6 +52,7 @@ module Lumina
         if features.include?("publish")
           task("Publishing config") { publish_config(test_framework) }
           task("Publishing routes") { publish_routes }
+          task("Creating blueprint directory") { create_blueprint_directory }
         end
 
         if features.include?("multi_tenant")
@@ -312,6 +313,75 @@ module Lumina
         end
 
         say ""
+      end
+
+      # ----------------------------------------------------------------
+      # Blueprint directory
+      # ----------------------------------------------------------------
+
+      def create_blueprint_directory
+        bp_dir = Rails.root.join(".lumina", "blueprints")
+        FileUtils.mkdir_p(bp_dir)
+
+        guide_path = bp_dir.join("..", "BLUEPRINT.md")
+        unless File.exist?(guide_path)
+          File.write(guide_path, blueprint_guide_content)
+        end
+      end
+
+      def blueprint_guide_content
+        <<~MD
+          # Lumina Blueprint — AI Guide
+
+          Use this file to teach AI assistants how to generate valid YAML blueprint files.
+
+          ## Quick Start
+
+          1. Create `_roles.yaml` in `.lumina/blueprints/` with your role definitions
+          2. Create `{model_slug}.yaml` for each model
+          3. Run `rails lumina:blueprint` to generate all files
+
+          ## Roles Format
+
+          ```yaml
+          roles:
+            owner:
+              name: Owner
+              description: "Full access"
+            viewer:
+              name: Viewer
+              description: "Read-only"
+          ```
+
+          ## Model Format
+
+          ```yaml
+          model: Contract
+          slug: contracts
+
+          options:
+            belongs_to_organization: true
+            soft_deletes: true
+
+          columns:
+            title:
+              type: string
+              filterable: true
+
+          permissions:
+            owner:
+              actions: [index, show, store, update, destroy]
+              show_fields: "*"
+              create_fields: "*"
+              update_fields: "*"
+          ```
+
+          ## Valid Column Types
+          string, text, integer, bigInteger, boolean, date, datetime, timestamp, decimal, float, json, uuid, foreignId
+
+          ## Valid Actions
+          index, show, store, update, destroy, trashed, restore, forceDelete
+        MD
       end
 
       # ----------------------------------------------------------------
