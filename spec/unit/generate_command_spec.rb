@@ -20,77 +20,63 @@ RSpec.describe Lumina::Commands::GenerateCommand do
   end
 
   # ------------------------------------------------------------------
-  # column_to_validation_rule
+  # column_to_rails_validations
   # ------------------------------------------------------------------
 
-  describe "#column_to_validation_rule" do
-    def rule(column_attrs)
+  describe "#column_to_rails_validations" do
+    def validations(column_attrs)
       column = { name: "field", type: "string", nullable: false, unique: false,
                  index: false, default: nil, foreign_model: nil }.merge(column_attrs)
-      command.send(:column_to_validation_rule, column, "posts")
+      command.send(:column_to_rails_validations, column)
     end
 
-    it "string column" do
-      expect(rule(type: "string")).to eq("required|string|max:255")
+    it "string column returns length validation" do
+      expect(validations(type: "string")).to eq(["length: { maximum: 255 }"])
     end
 
-    it "text column" do
-      expect(rule(type: "text")).to eq("required|string")
+    it "text column returns no validations" do
+      expect(validations(type: "text")).to eq([])
     end
 
-    it "integer column" do
-      expect(rule(type: "integer")).to eq("required|integer")
+    it "integer column returns numericality" do
+      expect(validations(type: "integer")).to eq(["numericality: { only_integer: true }"])
     end
 
-    it "bigint column" do
-      expect(rule(type: "bigint")).to eq("required|integer")
+    it "bigint column returns numericality" do
+      expect(validations(type: "bigint")).to eq(["numericality: { only_integer: true }"])
     end
 
-    it "boolean column" do
-      expect(rule(type: "boolean")).to eq("required|boolean")
+    it "boolean column returns inclusion" do
+      expect(validations(type: "boolean")).to eq(["inclusion: { in: [true, false] }"])
     end
 
-    it "date column" do
-      expect(rule(type: "date")).to eq("required|date")
+    it "date column returns no validations" do
+      expect(validations(type: "date")).to eq([])
     end
 
-    it "datetime column" do
-      expect(rule(type: "datetime")).to eq("required|date")
+    it "datetime column returns no validations" do
+      expect(validations(type: "datetime")).to eq([])
     end
 
-    it "decimal column" do
-      expect(rule(type: "decimal")).to eq("required|numeric")
+    it "decimal column returns no validations" do
+      expect(validations(type: "decimal")).to eq([])
     end
 
-    it "float column" do
-      expect(rule(type: "float")).to eq("required|numeric")
+    it "float column returns no validations" do
+      expect(validations(type: "float")).to eq([])
     end
 
-    it "json column" do
-      expect(rule(type: "json")).to eq("required|array")
+    it "json column returns no validations" do
+      expect(validations(type: "json")).to eq([])
     end
 
-    it "uuid column" do
-      expect(rule(type: "uuid")).to eq("required|uuid")
+    it "uuid column returns no validations" do
+      expect(validations(type: "uuid")).to eq([])
     end
 
-    it "references column with foreign model" do
-      result = rule(type: "references", name: "user_id", foreign_model: "User")
-      expect(result).to eq("required|integer|exists:users,id")
-    end
-
-    it "references column without foreign model" do
-      result = rule(type: "references", name: "user_id", foreign_model: nil)
-      expect(result).to eq("required|integer")
-    end
-
-    it "nullable column" do
-      expect(rule(type: "string", nullable: true)).to eq("nullable|string|max:255")
-    end
-
-    it "unique column" do
-      expect(rule(type: "string", name: "email", unique: true))
-        .to eq("required|string|max:255|unique:posts,email")
+    it "references column returns numericality" do
+      result = validations(type: "references", name: "user_id", foreign_model: "User")
+      expect(result).to eq(["numericality: { only_integer: true }"])
     end
   end
 

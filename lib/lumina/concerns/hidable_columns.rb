@@ -60,16 +60,48 @@ module Lumina
       columns.uniq
     end
 
-    # Serialize to JSON excluding hidden columns.
+    # Serialize to JSON excluding hidden columns and respecting policy whitelist.
+    #
+    # Computed attributes (defined via +as_json+ overrides) are fully supported:
+    # they can be hidden via +hidden_attributes_for_show+ or filtered via
+    # +permitted_attributes_for_show+ just like database columns.
     #
     # @param user [Object, nil] The authenticated user
     # @return [Hash]
     def as_lumina_json(user = nil)
       hidden = hidden_columns_for(user)
-      as_json(except: hidden)
+      result = as_json(except: hidden)
+
+      # Re-apply blacklist to the final hash. This catches computed attributes
+      # added via as_json overrides that bypass the :except option.
+      hidden_set = Set.new(hidden)
+      result.reject! { |key, _| hidden_set.include?(key) }
+
+      # Apply whitelist to the final hash (covers computed attributes too)
+      permitted = policy_permitted_attributes(user)
+      if permitted && permitted != ['*']
+        permitted_set = Set.new(permitted.map(&:to_s))
+        permitted_set.add('id') # id is always allowed
+        result.select! { |key, _| permitted_set.include?(key) }
+      end
+
+      result
     end
 
     private
+
+    # Returns the permitted attributes list from the policy, or nil if no policy.
+    def policy_permitted_attributes(user)
+      policy_class = Pundit::PolicyFinder.new(self).policy
+      return nil unless policy_class
+
+      policy = policy_class.new(user, self)
+      if policy.respond_to?(:permitted_attributes_for_show)
+        policy.permitted_attributes_for_show(user)
+      end
+    rescue StandardError
+      nil
+    end
 
     def policy_hidden_columns(user)
       policy_class = Pundit::PolicyFinder.new(self).policy
@@ -84,6 +116,7 @@ module Lumina
       end
 
       # Whitelist: permitted_attributes_for_show
+      # Hide DB columns not in permitted list (computed attributes handled in as_lumina_json)
       if policy.respond_to?(:permitted_attributes_for_show)
         permitted = policy.permitted_attributes_for_show(user)
         if permitted != ['*']

@@ -32,29 +32,9 @@ class <%= name %> < Lumina::LuminaModel
   # Validation (ActiveModel — use allow_nil: true for all validators)
   # ---------------------------------------------------------------
 
-<% unless validation_rules.empty? -%>
-<% validation_rules.each do |field, rule| -%>
-<% # Convert pipe-delimited rules to ActiveModel validates calls -%>
-<% parts = rule.split("|").reject { |p| %w[required nullable sometimes].include?(p) } -%>
-<% validations = [] -%>
-<% parts.each do |part| -%>
-<%   if part.start_with?("max:") -%>
-<%     validations << "length: { maximum: #{part.sub('max:', '')} }" -%>
-<%   elsif part.start_with?("min:") -%>
-<%     validations << "length: { minimum: #{part.sub('min:', '')} }" -%>
-<%   elsif part == "boolean" -%>
-<%     validations << "inclusion: { in: [true, false] }" -%>
-<%   elsif part.start_with?("in:") -%>
-<%     vals = part.sub("in:", "").split(",").map { |v| "\"#{v}\"" }.join(", ") -%>
-<%     validations << "inclusion: { in: [#{vals}] }" -%>
-<%   elsif part == "integer" -%>
-<%     validations << "numericality: { only_integer: true }" -%>
-<%   end -%>
-<% end -%>
-<% unless validations.empty? -%>
+<% validation_rules.each do |field, validations| -%>
+<% next if validations.empty? -%>
   validates :<%= field %>, <%= validations.join(", ") %>, allow_nil: true
-<% end -%>
-<% end -%>
 <% end -%>
 
   # ---------------------------------------------------------------

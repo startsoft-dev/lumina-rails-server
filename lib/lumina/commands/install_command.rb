@@ -71,6 +71,8 @@ module Lumina
         say ""
         run_post_install_steps(features)
 
+        install_ai_skill
+
         say ""
         say "Lumina installed successfully!", :green
         say ""
@@ -382,6 +384,69 @@ module Lumina
           ## Valid Actions
           index, show, store, update, destroy, trashed, restore, forceDelete
         MD
+      end
+
+      # ----------------------------------------------------------------
+      # AI Skill
+      # ----------------------------------------------------------------
+
+      def install_ai_skill
+        say ""
+
+        ai_tools = prompt_multiselect(
+          "Install Lumina AI Skill for which tools? (select none to skip)",
+          {
+            "claude" => "Claude Code (.claude/skills/lumina/)",
+            "cursor" => "Cursor (.cursor/rules/lumina/)",
+            "ai" => "AI Directory (.ai/skills/lumina/)"
+          },
+          default: ["claude"]
+        )
+
+        return if ai_tools.empty?
+
+        url = "https://startsoft-dev.github.io/lumina-docs/skills/rails/SKILL.md"
+
+        destinations = {
+          "claude" => ".claude/skills/lumina/SKILL.md",
+          "cursor" => ".cursor/rules/lumina/SKILL.md",
+          "ai" => ".ai/skills/lumina/SKILL.md"
+        }
+
+        # Download once
+        require "net/http"
+        require "uri"
+
+        uri = URI.parse(url)
+        response = Net::HTTP.get_response(uri)
+
+        # Follow redirect if needed
+        if response.is_a?(Net::HTTPRedirection)
+          uri = URI.parse(response["location"])
+          response = Net::HTTP.get_response(uri)
+        end
+
+        unless response.is_a?(Net::HTTPSuccess)
+          say "  Could not download skill file. You can manually download it from:", :yellow
+          say "  #{url}", :light_black
+          return
+        end
+
+        content = response.body
+
+        ai_tools.each do |tool|
+          dest_file = Rails.root.join(destinations[tool])
+
+          task("Installing skill for #{tool}") do
+            FileUtils.mkdir_p(File.dirname(dest_file))
+            File.write(dest_file, content)
+          end
+        end
+
+        say "  AI Skill installed successfully.", :green
+      rescue StandardError => e
+        say "  Could not download skill file (#{e.message}). You can manually download it from:", :yellow
+        say "  #{url}", :light_black
       end
 
       # ----------------------------------------------------------------

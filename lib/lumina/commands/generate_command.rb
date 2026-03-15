@@ -347,7 +347,7 @@ module Lumina
         include_cols = columns.select { |c| c[:type] == "references" && c[:foreign_model] }
                               .map { |c| c[:name].sub(/_id\z/, "") }
 
-        validation_rules = columns.to_h { |c| [c[:name], column_to_validation_rule(c, table_name)] }
+        validation_rules = columns.to_h { |c| [c[:name], column_to_rails_validations(c)] }
 
         content = ERB.new(File.read(template), trim_mode: "-").result_with_hash(
           name: name,
@@ -444,38 +444,24 @@ module Lumina
       # Helpers
       # ----------------------------------------------------------------
 
-      def column_to_validation_rule(column, table_name)
-        rules = []
-        rules << (column[:nullable] ? "nullable" : "required")
+      # Returns an array of Rails validation option strings for a column.
+      # e.g. ["length: { maximum: 255 }"]
+      # These are appended after `validates :field_name, ` in the template.
+      def column_to_rails_validations(column)
+        validations = []
 
         case column[:type]
         when "string"
-          rules << "string" << "max:255"
-        when "text"
-          rules << "string"
+          validations << "length: { maximum: 255 }"
         when "integer", "bigint"
-          rules << "integer"
+          validations << "numericality: { only_integer: true }"
         when "boolean"
-          rules << "boolean"
-        when "date", "datetime"
-          rules << "date"
-        when "decimal", "float"
-          rules << "numeric"
-        when "json"
-          rules << "array"
-        when "uuid"
-          rules << "uuid"
+          validations << "inclusion: { in: [true, false] }"
         when "references"
-          rules << "integer"
-          if column[:foreign_model]
-            foreign_table = column[:foreign_model].underscore.pluralize
-            rules << "exists:#{foreign_table},id"
-          end
+          validations << "numericality: { only_integer: true }"
         end
 
-        rules << "unique:#{table_name},#{column[:name]}" if column[:unique]
-
-        rules.join("|")
+        validations
       end
 
       def column_to_faker(column)
