@@ -264,12 +264,13 @@ RSpec.describe Lumina::Commands::InstallCommand do
       expect(updated).to include("config.model :roles, 'Role'")
     end
 
-    it "adds tenant route group to config" do
+    it "adds tenant route group to config with fully qualified middleware" do
       command.send(:update_config, "slug")
 
       config_path = File.join(tmp_dir, "config/initializers/lumina.rb")
       content = File.read(config_path, encoding: "UTF-8")
       expect(content).to include("config.route_group :tenant")
+      expect(content).to include("Lumina::Middleware::ResolveOrganizationFromRoute")
     end
 
     it "uses the config block variable, not a different name" do

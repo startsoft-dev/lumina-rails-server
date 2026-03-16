@@ -30,15 +30,15 @@ Lumina.configure do |config|
   # config.route_group :default, prefix: '', middleware: [], models: :all
   #
   # Simple multi-tenant app:
-  # config.route_group :tenant, prefix: ':organization', middleware: [ResolveOrganizationFromRoute], models: :all
+  # config.route_group :tenant, prefix: ':organization', middleware: [Lumina::Middleware::ResolveOrganizationFromRoute], models: :all
   #
   # Hybrid platform (customer + driver + admin + public):
-  # config.route_group :tenant, prefix: ':organization', middleware: [ResolveOrganizationFromRoute], models: :all
+  # config.route_group :tenant, prefix: ':organization', middleware: [Lumina::Middleware::ResolveOrganizationFromRoute], models: :all
   # config.route_group :driver, prefix: 'driver', middleware: [], models: [:trips, :trucks]
   # config.route_group :admin, prefix: 'admin', middleware: [], models: :all
   # config.route_group :public, prefix: 'public', middleware: [], models: [:materials]
 
-  # c.route_group :default, prefix: '', middleware: [], models: :all
+  # config.route_group :default, prefix: '', middleware: [], models: :all
 
   # ---------------------------------------------------------------
   # Multi-tenant

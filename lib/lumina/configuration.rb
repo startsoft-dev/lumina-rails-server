@@ -29,7 +29,7 @@ module Lumina
     end
 
     # Register a route group with its configuration
-    # Usage: config.route_group :tenant, prefix: ':organization', middleware: [ResolveOrganizationFromRoute], models: :all
+    # Usage: config.route_group :tenant, prefix: ':organization', middleware: [Lumina::Middleware::ResolveOrganizationFromRoute], models: :all
     def route_group(name, prefix: "", middleware: [], models: :all)
       @route_groups[name.to_sym] = {
         prefix: prefix.to_s,

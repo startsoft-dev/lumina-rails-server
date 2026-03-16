@@ -221,7 +221,7 @@ module Lumina
         unless content.include?("config.route_group :tenant")
           content = content.gsub(
             "# config.route_group :default",
-            "config.route_group :tenant, prefix: \":organization\", middleware: [ResolveOrganizationFromRoute], models: :all\n  # config.route_group :default"
+            "config.route_group :tenant, prefix: \":organization\", middleware: [Lumina::Middleware::ResolveOrganizationFromRoute], models: :all\n  # config.route_group :default"
           )
         end
 
