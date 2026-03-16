@@ -198,8 +198,23 @@ module Lumina
     end
 
     def set_organization
-      # Organization is resolved by middleware and stored in request env
+      # Try from middleware first, then resolve from route params
       @organization = request.env["lumina.organization"]
+      return if @organization
+
+      org_identifier = params[:organization]
+      return unless org_identifier.present?
+
+      org_class = "Organization".safe_constantize
+      return unless org_class
+
+      column = Lumina.config.multi_tenant[:organization_identifier_column] || "id"
+      @organization = org_class.find_by(column => org_identifier)
+
+      if @organization
+        request.env["lumina.organization"] = @organization
+        RequestStore.store[:lumina_organization] = @organization if defined?(RequestStore)
+      end
     end
 
     def current_organization

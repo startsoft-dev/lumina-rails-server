@@ -13,6 +13,7 @@ module Lumina
     @@organization_path_cache = {}
 
     before_action :set_model_class
+    before_action :resolve_organization
     before_action :authenticate_user!, unless: :public_route_group?
 
     # GET /api/{slug}
@@ -298,6 +299,28 @@ module Lumina
     # ------------------------------------------------------------------
     # Organization (multi-tenant)
     # ------------------------------------------------------------------
+
+    def resolve_organization
+      org_identifier = params[:organization]
+      return unless org_identifier.present?
+
+      org_class = "Organization".safe_constantize
+      return unless org_class
+
+      column = Lumina.config.multi_tenant[:organization_identifier_column] || "id"
+      organization = org_class.find_by(column => org_identifier)
+
+      unless organization
+        render json: { message: "Organization not found" }, status: :not_found
+        return
+      end
+
+      request.env["lumina.organization"] = organization
+
+      if defined?(RequestStore)
+        RequestStore.store[:lumina_organization] = organization
+      end
+    end
 
     def current_organization
       request.env["lumina.organization"]
