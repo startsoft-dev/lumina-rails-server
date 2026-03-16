@@ -161,6 +161,25 @@ RSpec.describe Lumina::Commands::BlueprintCommand do
       path = command.send(:generate_migration, blueprint)
       expect(path).to match(/db\/migrate\/\d{14}_create_articles\.rb/)
     end
+
+    it "includes organization_id when belongs_to_organization and multi-tenant" do
+      blueprint[:options][:belongs_to_organization] = true
+      config_path = File.join(tmp_dir, "config/initializers/lumina.rb")
+      File.write(config_path, 'c.route_group :tenant, prefix: ":organization"')
+
+      path = command.send(:generate_migration, blueprint)
+
+      content = File.read(File.join(tmp_dir, path))
+      expect(content).to include("t.references :organization, foreign_key: true")
+    end
+
+    it "uses to_table when FK column name does not match model table" do
+      blueprint[:columns] << { name: "assignee_id", type: "foreignId", nullable: true, foreign_model: "User" }
+      path = command.send(:generate_migration, blueprint)
+
+      content = File.read(File.join(tmp_dir, path))
+      expect(content).to include("t.references :assignee, foreign_key: { to_table: :users }")
+    end
   end
 
   # ------------------------------------------------------------------

@@ -302,11 +302,18 @@ module Lumina
         table_name = blueprint[:table]
         columns = blueprint[:columns]
         soft_deletes = blueprint[:options][:soft_deletes]
+        belongs_to_org = blueprint[:options][:belongs_to_organization]
 
         timestamp = Time.current.strftime("%Y%m%d%H%M%S")
         class_name = "Create#{blueprint[:model].pluralize}"
 
         lines = []
+
+        # Add organization reference if belongs_to_organization
+        if belongs_to_org && multi_tenant_enabled?
+          lines << "t.references :organization, foreign_key: true"
+        end
+
         columns.each do |col|
           lines << column_to_migration_line(col)
         end
@@ -514,7 +521,16 @@ module Lumina
       def column_to_migration_line(col)
         case col[:type]
         when "foreignId", "references"
-          line = "t.references :#{col[:name].sub(/_id\z/, '')}, foreign_key: true"
+          ref_name = col[:name].sub(/_id\z/, "")
+          foreign_table = col[:foreign_model]&.underscore&.pluralize
+
+          # If the reference name doesn't match the foreign model's table,
+          # we need to specify the target table explicitly
+          if foreign_table && foreign_table != ref_name.pluralize
+            line = "t.references :#{ref_name}, foreign_key: { to_table: :#{foreign_table} }"
+          else
+            line = "t.references :#{ref_name}, foreign_key: true"
+          end
           line += ", null: true" if col[:nullable]
           line
         when "decimal"
