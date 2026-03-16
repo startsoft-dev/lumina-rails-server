@@ -12,6 +12,10 @@ module Lumina
     # Disable parameter wrapping — Lumina expects flat JSON params
     wrap_parameters false
 
+    rescue_from Pundit::NotAuthorizedError do |_exception|
+      render json: { message: "This action is unauthorized." }, status: :forbidden
+    end
+
     # Cache for auto-detected organization paths (class-level, survives across requests)
     @@organization_path_cache = {}
 
@@ -314,6 +318,13 @@ module Lumina
       organization = org_class.find_by(column => org_identifier)
 
       unless organization
+        render json: { message: "Organization not found" }, status: :not_found
+        return
+      end
+
+      # Check if authenticated user belongs to this organization
+      user = current_user
+      if user && user.respond_to?(:user_roles) && !user.user_roles.exists?(organization_id: organization.id)
         render json: { message: "Organization not found" }, status: :not_found
         return
       end
