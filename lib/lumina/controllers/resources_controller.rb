@@ -788,7 +788,7 @@ module Lumina
     end
 
     def params_hash
-      params.except(:controller, :action, :model_slug, :route_group, :id, :format).to_unsafe_h
+      params.except(:controller, :action, :model_slug, :route_group, :organization, :id, :format).to_unsafe_h
     end
   end
 end
