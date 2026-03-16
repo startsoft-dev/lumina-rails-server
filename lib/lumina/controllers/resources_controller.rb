@@ -9,6 +9,9 @@ module Lumina
   class ResourcesController < ActionController::API
     include Pundit::Authorization
 
+    # Disable parameter wrapping — Lumina expects flat JSON params
+    wrap_parameters false
+
     # Cache for auto-detected organization paths (class-level, survives across requests)
     @@organization_path_cache = {}
 
