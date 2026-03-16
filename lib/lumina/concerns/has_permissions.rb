@@ -39,17 +39,22 @@ module Lumina
       return false if permission.blank?
 
       if organization
-        # Tenant route group: check role.permissions for this organization
+        # Tenant route group: check permissions for this organization
         user_role = find_user_role(organization)
 
         if user_role
+          # Check user_role.permissions first (per-user-org permissions on the pivot)
+          ur_permissions = parse_permissions(user_role.respond_to?(:permissions) ? user_role.permissions : nil)
+          if ur_permissions.present?
+            return matches_permission?(permission, ur_permissions)
+          end
+
+          # Fallback to role.permissions (shared role-level permissions)
           role = user_role.respond_to?(:role) ? user_role.role : nil
-          return false unless role
-
-          permissions = parse_permissions(role.respond_to?(:permissions) ? role.permissions : nil)
-          return false if permissions.blank?
-
-          return matches_permission?(permission, permissions)
+          if role
+            role_permissions = parse_permissions(role.respond_to?(:permissions) ? role.permissions : nil)
+            return matches_permission?(permission, role_permissions) if role_permissions.present?
+          end
         end
 
         return false

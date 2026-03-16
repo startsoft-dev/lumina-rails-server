@@ -176,6 +176,45 @@ RSpec.describe Lumina::HasPermissions do
   end
 
   # ------------------------------------------------------------------
+  # User role pivot permissions
+  # ------------------------------------------------------------------
+
+  describe "user_role.permissions (pivot-level)" do
+    it "grants access via user_role.permissions when present" do
+      user = User.create!(name: "Pivot User", email: "pivot-#{SecureRandom.uuid}@example.com")
+      org = Organization.create!(name: "Pivot Org", slug: "pivot-org-#{SecureRandom.uuid}")
+      role = Role.create!(name: "Empty Role", slug: "empty-#{SecureRandom.uuid}")
+      UserRole.create!(user: user, organization: org, role: role, permissions: ["categories.*", "projects.index"])
+
+      expect(user.has_permission?("categories.index", org)).to be true
+      expect(user.has_permission?("categories.store", org)).to be true
+      expect(user.has_permission?("projects.index", org)).to be true
+      expect(user.has_permission?("projects.store", org)).to be false
+    end
+
+    it "prefers user_role.permissions over role.permissions" do
+      user = User.create!(name: "Override User", email: "override-#{SecureRandom.uuid}@example.com")
+      org = Organization.create!(name: "Override Org", slug: "override-org-#{SecureRandom.uuid}")
+      role = Role.create!(name: "Full Role", slug: "full-override-#{SecureRandom.uuid}", permissions: ["*"])
+      UserRole.create!(user: user, organization: org, role: role, permissions: ["posts.index"])
+
+      # user_role.permissions overrides role.permissions
+      expect(user.has_permission?("posts.index", org)).to be true
+      expect(user.has_permission?("posts.store", org)).to be false
+    end
+
+    it "falls back to role.permissions when user_role.permissions is empty" do
+      user = User.create!(name: "Fallback User", email: "fallback-#{SecureRandom.uuid}@example.com")
+      org = Organization.create!(name: "Fallback Org", slug: "fallback-org-#{SecureRandom.uuid}")
+      role = Role.create!(name: "Full Role", slug: "full-fallback-#{SecureRandom.uuid}", permissions: ["*"])
+      UserRole.create!(user: user, organization: org, role: role, permissions: [])
+
+      expect(user.has_permission?("posts.index", org)).to be true
+      expect(user.has_permission?("anything.here", org)).to be true
+    end
+  end
+
+  # ------------------------------------------------------------------
   # Role slug for validation
   # ------------------------------------------------------------------
 
