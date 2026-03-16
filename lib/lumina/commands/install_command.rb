@@ -139,9 +139,10 @@ module Lumina
         templates_dir = File.expand_path("../../templates/multi_tenant/migrations", __FILE__)
 
         {
-          "create_organizations" => "#{timestamp}00",
-          "create_roles" => "#{timestamp}01",
-          "create_user_roles" => "#{timestamp}02"
+          "create_users" => "#{timestamp}00",
+          "create_organizations" => "#{timestamp}01",
+          "create_roles" => "#{timestamp}02",
+          "create_user_roles" => "#{timestamp}03"
         }.each do |name, ts|
           template = File.join(templates_dir, "#{name}.rb.erb")
           next unless File.exist?(template)
@@ -157,7 +158,7 @@ module Lumina
 
         templates_dir = File.expand_path("../../templates/multi_tenant/models", __FILE__)
 
-        %w[organization role user_role].each do |model|
+        %w[user organization role user_role].each do |model|
           template = File.join(templates_dir, "#{model}.rb.erb")
           next unless File.exist?(template)
 
@@ -172,7 +173,7 @@ module Lumina
 
         templates_dir = File.expand_path("../../templates/multi_tenant/factories", __FILE__)
 
-        %w[organizations roles user_roles].each do |factory|
+        %w[users organizations roles user_roles].each do |factory|
           template = File.join(templates_dir, "#{factory}.rb.erb")
           next unless File.exist?(template)
 
