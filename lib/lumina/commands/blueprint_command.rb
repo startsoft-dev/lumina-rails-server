@@ -284,7 +284,9 @@ module Lumina
           relation_name = col[:name].sub(/_id\z/, "")
           next if belongs_to_org && col[:foreign_model] == "Organization"
 
-          content += "  belongs_to :#{relation_name}, class_name: '#{col[:foreign_model]}'\n"
+          opts = "class_name: '#{col[:foreign_model]}'"
+          opts += ", optional: true" if col[:nullable]
+          content += "  belongs_to :#{relation_name}, #{opts}\n"
         end
 
         content += "end\n"

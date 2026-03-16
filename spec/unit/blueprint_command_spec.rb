@@ -116,6 +116,22 @@ RSpec.describe Lumina::Commands::BlueprintCommand do
       content = File.read(File.join(tmp_dir, path))
       expect(content).not_to include("belongs_to :organization, class_name")
     end
+
+    it "adds optional: true for nullable FK belongs_to" do
+      blueprint[:columns] << { name: "assignee_id", type: "foreignId", nullable: true, foreign_model: "User" }
+      path = command.send(:generate_model, blueprint, false)
+
+      content = File.read(File.join(tmp_dir, path))
+      expect(content).to include("belongs_to :assignee, class_name: 'User', optional: true")
+    end
+
+    it "does not add optional: true for required FK belongs_to" do
+      path = command.send(:generate_model, blueprint, false)
+
+      content = File.read(File.join(tmp_dir, path))
+      expect(content).to include("belongs_to :user, class_name: 'User'")
+      expect(content).not_to include("optional: true")
+    end
   end
 
   # ------------------------------------------------------------------
