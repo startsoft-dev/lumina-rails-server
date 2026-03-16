@@ -437,11 +437,29 @@ module Lumina
 
         return if content.include?(":#{slug}")
 
-        new_entry = "  c.model :#{slug}, '#{name}'"
-        content = content.gsub(
-          "# c.model :posts, 'Post'",
-          "#{new_entry}\n  # c.model :posts, 'Post'"
-        )
+        # Detect the block variable name used in the config file (e.g., config, c, etc.)
+        block_var = content.match(/Lumina\.configure\s+do\s+\|(\w+)\|/)&.captures&.first || "config"
+
+        new_entry = "  #{block_var}.model :#{slug}, '#{name}'"
+
+        # Try to insert before the commented-out example line (matching any variable name)
+        if content.include?("# #{block_var}.model :posts, 'Post'")
+          content = content.gsub(
+            "# #{block_var}.model :posts, 'Post'",
+            "#{new_entry}\n  # #{block_var}.model :posts, 'Post'"
+          )
+        elsif content.match?(/# \w+\.model :posts, 'Post'/)
+          content = content.sub(
+            /# (\w+)\.model :posts, 'Post'/,
+            "#{new_entry}\n  # \\1.model :posts, 'Post'"
+          )
+        else
+          # Fallback: insert after the Models section comment
+          content = content.sub(
+            /(# Register your models here.*?\n)/,
+            "\\1#{new_entry}\n"
+          )
+        end
 
         File.write(config_path, content)
       end
