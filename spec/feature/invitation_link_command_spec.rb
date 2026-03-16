@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require "spec_helper"
-require "rails/command"
 require "lumina/commands/invitation_link_command"
 
 # Make OrganizationInvitation available at top level (command references it without module)
@@ -20,8 +19,7 @@ Lumina::OrganizationInvitation.class_eval do
 end
 
 RSpec.describe Lumina::Commands::InvitationLinkCommand do
-  # Thor requires arguments to be passed at instantiation
-  let(:command) { described_class.new(["dummy@test.com", "dummy-org"], { "role" => nil, "create" => false }) }
+  let(:command) { described_class.new }
   let(:output) { [] }
 
   # Test data

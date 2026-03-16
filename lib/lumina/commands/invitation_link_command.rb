@@ -1,23 +1,21 @@
 # frozen_string_literal: true
 
-require "rails/command"
+require "lumina/commands/base_command"
 
 module Lumina
   module Commands
     # Generate an invitation link for testing — mirrors Laravel `php artisan invitation:link` exactly.
     #
     # Usage: rails invitation:link EMAIL ORG [--role=ROLE] [--create]
-    class InvitationLinkCommand < Rails::Command::Base
-      namespace "invitation:link"
+    class InvitationLinkCommand < BaseCommand
+      attr_accessor :email, :organization_identifier, :options
 
-      argument :email, type: :string, desc: "Email address for the invitation"
-      argument :organization_identifier, type: :string, desc: "Organization identifier (slug or ID)"
+      def initialize(shell = Thor::Shell::Color.new)
+        super(shell)
+        @options = { role: nil, create: false }
+      end
 
-      class_option :role, type: :string, default: nil, desc: "Role ID or slug"
-      class_option :create, type: :boolean, default: false, desc: "Create a new invitation if one does not exist"
-
-      desc "link", "Generate an invitation link for a user (for testing)"
-      def perform(email, organization_identifier)
+      def perform(email = @email, organization_identifier = @organization_identifier)
         role_identifier = options[:role]
         should_create = options[:create]
 

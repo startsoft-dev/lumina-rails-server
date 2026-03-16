@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require "rails/command"
+require "lumina/commands/base_command"
 require "fileutils"
 require "lumina/blueprint/blueprint_parser"
 require "lumina/blueprint/blueprint_validator"
@@ -16,23 +16,21 @@ module Lumina
     # Port of lumina-server BlueprintCommand.php / lumina-adonis-server blueprint.ts.
     #
     # Usage: rails lumina:blueprint [OPTIONS]
-    class BlueprintCommand < Rails::Command::Base
-      namespace "lumina:blueprint"
+    class BlueprintCommand < BaseCommand
+      attr_accessor :options
 
-      class_option :dir, type: :string, default: ".lumina/blueprints",
-                   desc: "Blueprint directory"
-      class_option :model, type: :string, default: nil,
-                   desc: "Process a single model only"
-      class_option :force, type: :boolean, default: false,
-                   desc: "Force regeneration (ignore cached hashes)"
-      class_option :dry_run, type: :boolean, default: false,
-                   desc: "Preview without writing files"
-      class_option :skip_tests, type: :boolean, default: false,
-                   desc: "Skip test file generation"
-      class_option :skip_seeders, type: :boolean, default: false,
-                   desc: "Skip seeder generation"
+      def initialize(shell = Thor::Shell::Color.new)
+        super(shell)
+        @options = {
+          dir: ".lumina/blueprints",
+          model: nil,
+          force: false,
+          dry_run: false,
+          skip_tests: false,
+          skip_seeders: false
+        }
+      end
 
-      desc "blueprint", "Generate resources from YAML blueprint specs"
       def perform
         print_banner
 

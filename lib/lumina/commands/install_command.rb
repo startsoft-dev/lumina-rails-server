@@ -1,17 +1,13 @@
 # frozen_string_literal: true
 
-require "rails/command"
-require "thor"
+require "lumina/commands/base_command"
 
 module Lumina
   module Commands
     # Interactive setup wizard — mirrors Laravel `php artisan lumina:install` exactly.
     #
     # Usage: rails lumina:install
-    class InstallCommand < Rails::Command::Base
-      namespace "lumina:install"
-
-      desc "install", "Install and configure Lumina for your Rails application"
+    class InstallCommand < BaseCommand
       def perform
         print_banner
 

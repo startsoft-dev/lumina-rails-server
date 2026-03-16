@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require "rails/command"
+require "lumina/commands/base_command"
 require "json"
 
 module Lumina
@@ -9,14 +9,18 @@ module Lumina
     # Mirrors Laravel `php artisan lumina:export-postman` exactly.
     #
     # Usage: rails lumina:export_postman [--output=postman_collection.json] [--base-url=http://localhost:3000/api]
-    class ExportPostmanCommand < Rails::Command::Base
-      namespace "lumina:export_postman"
+    class ExportPostmanCommand < BaseCommand
+      attr_accessor :options
 
-      class_option :output, type: :string, default: "postman_collection.json", desc: "Output file path"
-      class_option :base_url, type: :string, default: "http://localhost:3000/api", desc: "Base URL for requests"
-      class_option :project_name, type: :string, default: nil, desc: "Collection name"
+      def initialize(shell = Thor::Shell::Color.new)
+        super(shell)
+        @options = {
+          output: "postman_collection.json",
+          base_url: "http://localhost:3000/api",
+          project_name: nil
+        }
+      end
 
-      desc "export_postman", "Generate a Postman Collection v2.1 for all registered models"
       def perform
         output_path = options[:output]
         base_url = options[:base_url].chomp("/")
