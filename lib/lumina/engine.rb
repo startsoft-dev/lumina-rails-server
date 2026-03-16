@@ -8,6 +8,10 @@ module Lumina
   class Engine < ::Rails::Engine
     isolate_namespace Lumina
 
+    rake_tasks do
+      load File.expand_path("tasks/lumina.rake", __dir__)
+    end
+
     initializer "lumina.autoloads" do
       # Concerns
       require "lumina/concerns/has_lumina"
