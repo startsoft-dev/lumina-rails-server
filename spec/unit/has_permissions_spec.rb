@@ -274,5 +274,37 @@ RSpec.describe Lumina::HasPermissions do
 
       expect(user.has_permission?("posts.index")).to be false
     end
+
+    it "parses string permissions (JSON encoded)" do
+      user = User.create!(
+        name: "String Perms",
+        email: "strperms-#{SecureRandom.uuid}@example.com",
+        permissions: '["posts.index", "posts.show"]'
+      )
+
+      expect(user.has_permission?("posts.index")).to be true
+      expect(user.has_permission?("posts.show")).to be true
+      expect(user.has_permission?("posts.store")).to be false
+    end
+
+    it "handles invalid JSON string permissions gracefully" do
+      user = User.create!(
+        name: "Bad JSON",
+        email: "badjson-#{SecureRandom.uuid}@example.com",
+        permissions: "not valid json"
+      )
+
+      expect(user.has_permission?("posts.index")).to be false
+    end
+
+    it "handles non-array non-string permissions" do
+      user = User.create!(
+        name: "Weird Perms",
+        email: "weird-#{SecureRandom.uuid}@example.com",
+        permissions: 42
+      )
+
+      expect(user.has_permission?("posts.index")).to be false
+    end
   end
 end

@@ -273,6 +273,43 @@ RSpec.describe Lumina::ResourcePolicy do
   # Aliases
   # ------------------------------------------------------------------
 
+  # ------------------------------------------------------------------
+  # Fallback when user doesn't implement has_permission?
+  # ------------------------------------------------------------------
+
+  describe "check_permission fallback" do
+    it "allows when user does not respond to has_permission?" do
+      user = double("basic_user")
+      allow(user).to receive(:respond_to?).with(:has_permission?).and_return(false)
+      allow(user).to receive(:respond_to?).with(:role_slug_for_validation).and_return(false)
+      allow(user).to receive(:nil?).and_return(false)
+      allow(user).to receive(:present?).and_return(true)
+
+      policy = ExplicitSlugPolicy.new(user, Post)
+      expect(policy.index?).to be true
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # Auto-resolve slug from instance
+  # ------------------------------------------------------------------
+
+  describe "auto-resolve slug from model instance" do
+    it "resolves slug from Lumina config using a model instance" do
+      # Use a policy without explicit resource_slug
+      policy_class = Class.new(Lumina::ResourcePolicy)
+      user = create_user_with_permissions(["posts.index"])
+      post = Post.new(title: "Test")
+
+      policy = policy_class.new(user, post)
+      expect(policy.index?).to be true
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # Method aliases
+  # ------------------------------------------------------------------
+
   describe "method aliases" do
     it "aliases view_any? to index?" do
       user = create_user_with_permissions(["posts.index"])

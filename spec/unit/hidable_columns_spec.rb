@@ -157,6 +157,42 @@ RSpec.describe Lumina::HidableColumns do
       hidden = post.hidden_columns_for(nil)
       expect(hidden).to include("password") # base columns still present
     end
+
+    it "handles policy that raises an error in policy_hidden_columns" do
+      error_policy_class = Class.new do
+        def initialize(u, r); end
+        def hidden_attributes_for_show(user)
+          raise StandardError, "broken policy"
+        end
+      end
+
+      allow(Pundit::PolicyFinder).to receive(:new).and_return(
+        double(policy: error_policy_class)
+      )
+
+      post = HidablePost.create!(title: "Test", content: "Content")
+      hidden = post.hidden_columns_for(nil)
+      # Should fall back to empty array from rescue
+      expect(hidden).to include("password") # base columns still present
+    end
+
+    it "handles policy that raises an error in policy_permitted_attributes" do
+      error_policy_class = Class.new do
+        def initialize(u, r); end
+        def permitted_attributes_for_show(user)
+          raise StandardError, "broken policy"
+        end
+      end
+
+      allow(Pundit::PolicyFinder).to receive(:new).and_return(
+        double(policy: error_policy_class)
+      )
+
+      post = HidablePost.create!(title: "Test", content: "Content")
+      # as_lumina_json calls policy_permitted_attributes which should rescue
+      json = post.as_lumina_json(nil)
+      expect(json).to have_key("id")
+    end
   end
 
   # ------------------------------------------------------------------

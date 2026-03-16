@@ -18,7 +18,7 @@ Register a model, get a full REST API instantly.
 | 4 | **Role-Based Access Control** | Per-org roles via `user_roles` join table. |
 | 5 | **Attribute-Level Permissions** | Control which fields each role can read and write. |
 | 6 | **Validation** | Dual-layer: format rules + field presence. Supports role-keyed rules. |
-| 7 | **Cross-Tenant FK Validation** | `exists:` rules auto-scoped to current org, walks FK chains up to 5 levels. |
+| 7 | **Cross-Tenant FK Validation** | `exists:` rules auto-scoped to current org, even through indirect FK relationships. |
 | 8 | **Filtering** | `?filter[field]=value` with AND/OR logic. |
 | 9 | **Sorting** | `?sort=-created_at,title` — ascending and descending. |
 | 10 | **Full-Text Search** | `?search=term` across configured fields, supports relationship dot notation. |

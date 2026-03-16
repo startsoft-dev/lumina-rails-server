@@ -29,6 +29,17 @@ class AuditPostWithExclusions < ActiveRecord::Base
   lumina_audit_exclude :password, :remember_token, :status
 end
 
+class AuditPostMinimal < ActiveRecord::Base
+  include Lumina::HasLumina
+  include Lumina::HasValidation
+  include Lumina::HidableColumns
+  include Lumina::HasAuditTrail
+
+  self.table_name = "posts"
+
+  # No lumina_audit_exclude, no Discard — minimal usage
+end
+
 RSpec.describe "AuditTrail" do
   # ------------------------------------------------------------------
   # Logging on model events
@@ -193,6 +204,54 @@ RSpec.describe "AuditTrail" do
 
       expect(actions).to include("created")
       expect(actions).to include("updated")
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # Regression: model without custom audit exclusions
+  # ------------------------------------------------------------------
+
+  describe "model without custom audit exclusions" do
+    it "does not crash on create" do
+      post = AuditPostMinimal.create!(title: "Minimal", content: "Body")
+
+      logs = Lumina::AuditLog.where(
+        auditable_type: "AuditPostMinimal",
+        auditable_id: post.id
+      )
+
+      expect(logs.count).to eq(1)
+      expect(logs.first.action).to eq("created")
+      expect(logs.first.new_values["title"]).to eq("Minimal")
+    end
+
+    it "uses default excluded fields" do
+      expect(AuditPostMinimal.audit_exclude_fields).to eq(%w[password remember_token])
+    end
+
+    it "logs update correctly" do
+      post = AuditPostMinimal.create!(title: "Original", content: "Body")
+      Lumina::AuditLog.delete_all
+
+      post.update!(title: "Changed")
+
+      log = Lumina::AuditLog.first
+      expect(log).not_to be_nil
+      expect(log.action).to eq("updated")
+      expect(log.old_values["title"]).to eq("Original")
+      expect(log.new_values["title"]).to eq("Changed")
+    end
+
+    it "logs delete correctly" do
+      post = AuditPostMinimal.create!(title: "Delete Me", content: "Body")
+      Lumina::AuditLog.delete_all
+
+      post.destroy!
+
+      log = Lumina::AuditLog.first
+      expect(log).not_to be_nil
+      expect(log.action).to eq("force_deleted")
+      expect(log.old_values["title"]).to eq("Delete Me")
     end
   end
 

@@ -1,5 +1,17 @@
 # frozen_string_literal: true
 
+require "simplecov"
+SimpleCov.start do
+  add_filter "/spec/"
+  add_group "Concerns", "lib/lumina/concerns"
+  add_group "Controllers", "lib/lumina/controllers"
+  add_group "Models", "lib/lumina/models"
+  add_group "Policies", "lib/lumina/policies"
+  add_group "Blueprint", "lib/lumina/blueprint"
+  add_group "Commands", "lib/lumina/commands"
+  track_files "lib/**/*.rb"
+end
+
 require "bundler/setup"
 require "active_record"
 require "active_support/all"
@@ -174,6 +186,7 @@ class Post < ActiveRecord::Base
 
   belongs_to :organization, optional: true
   belongs_to :user, optional: true
+  belongs_to :blog, optional: true
   has_many :comments
 
   lumina_filters :title, :status, :is_published, :user_id
@@ -235,6 +248,15 @@ end
 # --------------------------------------------------------------------------
 # RSpec Config
 # --------------------------------------------------------------------------
+
+# Ensure Rails.logger is available for tests that need it
+unless defined?(Rails) && Rails.respond_to?(:logger)
+  unless defined?(Rails)
+    module Rails; end
+  end
+  require "logger"
+  Rails.define_singleton_method(:logger) { Logger.new(File::NULL) } unless Rails.respond_to?(:logger)
+end
 
 RSpec.configure do |config|
   config.expect_with :rspec do |expectations|

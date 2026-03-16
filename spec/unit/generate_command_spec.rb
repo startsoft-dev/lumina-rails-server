@@ -449,4 +449,101 @@ RSpec.describe Lumina::Commands::GenerateCommand do
       expect(command.send(:get_existing_models)).to eq([])
     end
   end
+
+  # ------------------------------------------------------------------
+  # print_banner
+  # ------------------------------------------------------------------
+
+  describe "#print_banner" do
+    it "outputs banner without error" do
+      expect { command.send(:print_banner) }.not_to raise_error
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # print_styled_header
+  # ------------------------------------------------------------------
+
+  describe "#print_styled_header" do
+    it "outputs header without error" do
+      expect { command.send(:print_styled_header) }.not_to raise_error
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # generate_policy
+  # ------------------------------------------------------------------
+
+  describe "#generate_policy" do
+    it "generates a policy file for named model" do
+      command.send(:generate_policy, "Article")
+
+      path = File.join(tmp_dir, "app/policies/article_policy.rb")
+      expect(File.exist?(path)).to be true
+
+      content = File.read(path)
+      expect(content).to include("class ArticlePolicy < Lumina::ResourcePolicy")
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # generate_scope
+  # ------------------------------------------------------------------
+
+  describe "#generate_scope" do
+    it "generates a scope file for named model" do
+      command.send(:generate_scope, "Article")
+
+      path = File.join(tmp_dir, "app/models/scopes/article_scope.rb")
+      expect(File.exist?(path)).to be true
+
+      content = File.read(path)
+      expect(content).to include("ArticleScope")
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # write_migration_file with different column types
+  # ------------------------------------------------------------------
+
+  describe "#write_migration_file with various types" do
+    it "generates decimal column in migration" do
+      columns = [
+        { name: "price", type: "decimal", nullable: false, unique: false,
+          index: false, default: nil, foreign_model: nil }
+      ]
+
+      command.send(:write_migration_file, "Product", columns, false)
+
+      files = Dir.glob(File.join(tmp_dir, "db/migrate/*_create_products.rb"))
+      content = File.read(files.first)
+      expect(content).to include("t.decimal :price")
+    end
+
+    it "generates boolean column in migration" do
+      columns = [
+        { name: "is_active", type: "boolean", nullable: false, unique: false,
+          index: false, default: nil, foreign_model: nil }
+      ]
+
+      command.send(:write_migration_file, "Setting", columns, false)
+
+      files = Dir.glob(File.join(tmp_dir, "db/migrate/*_create_settings.rb"))
+      content = File.read(files.first)
+      expect(content).to include("t.boolean :is_active")
+    end
+
+    it "generates json column in migration" do
+      columns = [
+        { name: "metadata", type: "json", nullable: true, unique: false,
+          index: false, default: nil, foreign_model: nil }
+      ]
+
+      command.send(:write_migration_file, "Config", columns, false)
+
+      files = Dir.glob(File.join(tmp_dir, "db/migrate/*_create_configs.rb"))
+      content = File.read(files.first)
+      expect(content).to include("t.json :metadata")
+    end
+  end
 end

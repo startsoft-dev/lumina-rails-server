@@ -229,19 +229,128 @@ RSpec.describe Lumina::Commands::InstallCommand do
 
     it "updates organization_identifier_column in config" do
       config_path = File.join(tmp_dir, "config/initializers/lumina.rb")
-      content = File.read(config_path)
+      content = File.read(config_path, encoding: "UTF-8")
       content += "\n  c.multi_tenant = {\n    organization_identifier_column: \"id\"\n  }\n"
       File.write(config_path, content)
 
       command.send(:update_config, "slug")
 
-      updated = File.read(config_path)
+      updated = File.read(config_path, encoding: "UTF-8")
       expect(updated).to include('organization_identifier_column: "slug"')
     end
 
     it "does nothing if config file does not exist" do
       FileUtils.rm_f(File.join(tmp_dir, "config/initializers/lumina.rb"))
       expect { command.send(:update_config, "id") }.not_to raise_error
+    end
+
+    it "adds organization and role models to config when marker present" do
+      # The update_config method replaces "# c.model :posts, 'Post'" marker
+      # Write a config that has the exact marker the method looks for
+      config_path = File.join(tmp_dir, "config/initializers/lumina.rb")
+      File.write(config_path, "Lumina.configure do |c|\n  # c.model :posts, 'Post'\n  # c.route_group :default\nend\n")
+
+      command.send(:update_config, "slug")
+
+      updated = File.read(config_path, encoding: "UTF-8")
+      expect(updated).to include("c.model :organizations, 'Organization'")
+      expect(updated).to include("c.model :roles, 'Role'")
+    end
+
+    it "adds tenant route group to config when marker present" do
+      config_path = File.join(tmp_dir, "config/initializers/lumina.rb")
+      File.write(config_path, "Lumina.configure do |c|\n  # c.model :posts, 'Post'\n  # c.route_group :default\nend\n")
+
+      command.send(:update_config, "slug")
+
+      content = File.read(config_path, encoding: "UTF-8")
+      expect(content).to include("c.route_group :tenant")
+    end
+
+    it "does not duplicate organizations model if already present" do
+      config_path = File.join(tmp_dir, "config/initializers/lumina.rb")
+      File.write(config_path, "Lumina.configure do |c|\n  # c.model :posts, 'Post'\n  # c.route_group :default\nend\n")
+
+      command.send(:update_config, "slug")
+      command.send(:update_config, "slug")
+
+      content = File.read(config_path, encoding: "UTF-8")
+      expect(content.scan("c.model :organizations").length).to eq(1)
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # create_blueprint_directory
+  # ------------------------------------------------------------------
+
+  describe "#create_blueprint_directory" do
+    it "creates .lumina/blueprints directory" do
+      command.send(:create_blueprint_directory)
+
+      expect(Dir.exist?(File.join(tmp_dir, ".lumina/blueprints"))).to be true
+    end
+
+    it "creates BLUEPRINT.md guide file" do
+      command.send(:create_blueprint_directory)
+
+      guide_path = File.join(tmp_dir, ".lumina/BLUEPRINT.md")
+      expect(File.exist?(guide_path)).to be true
+      expect(File.read(guide_path)).to include("Lumina Blueprint")
+    end
+
+    it "does not overwrite existing BLUEPRINT.md" do
+      FileUtils.mkdir_p(File.join(tmp_dir, ".lumina"))
+      File.write(File.join(tmp_dir, ".lumina/BLUEPRINT.md"), "custom content")
+
+      command.send(:create_blueprint_directory)
+
+      content = File.read(File.join(tmp_dir, ".lumina/BLUEPRINT.md"))
+      expect(content).to eq("custom content")
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # print_banner
+  # ------------------------------------------------------------------
+
+  describe "#print_banner" do
+    it "outputs banner without error" do
+      expect { command.send(:print_banner) }.not_to raise_error
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # print_next_steps
+  # ------------------------------------------------------------------
+
+  describe "#print_next_steps" do
+    it "prints audit trail step when included" do
+      expect(command).to receive(:say).with(/HasAuditTrail/, anything).at_least(:once)
+      command.send(:print_next_steps, ["audit_trail"])
+    end
+
+    it "prints multi_tenant step when included" do
+      expect(command).to receive(:say).with(/HasPermissions/, anything).at_least(:once)
+      command.send(:print_next_steps, ["multi_tenant"])
+    end
+
+    it "prints both steps when both features included" do
+      expect(command).to receive(:say).with(/HasAuditTrail/, anything).at_least(:once)
+      expect(command).to receive(:say).with(/HasPermissions/, anything).at_least(:once)
+      command.send(:print_next_steps, ["audit_trail", "multi_tenant"])
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # blueprint_guide_content
+  # ------------------------------------------------------------------
+
+  describe "#blueprint_guide_content" do
+    it "returns markdown content" do
+      content = command.send(:blueprint_guide_content)
+      expect(content).to include("Lumina Blueprint")
+      expect(content).to include("Quick Start")
+      expect(content).to include("Valid Column Types")
     end
   end
 end

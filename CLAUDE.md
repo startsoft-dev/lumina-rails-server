@@ -61,7 +61,7 @@ This library provides the following features. When modifying or extending any of
 | 4 | **Role-Based Access Control** (per-org roles via user_roles pivot) | `has_permissions.rb` |
 | 5 | **Attribute-Level Permissions** (read/write field control per role) | `resource_policy.rb`, `hidable_columns.rb` |
 | 6 | **Validation** (ActiveModel validations with `allow_nil: true` convention) | `has_validation.rb` |
-| 7 | **Cross-Tenant FK Validation** (validates FK references belong to current org via DB introspection, walks chains up to 5 levels) | `has_validation.rb` |
+| 7 | **Cross-Tenant FK Validation** (validates FK references belong to current org via DB introspection, even through indirect FK relationships) | `has_validation.rb` |
 | 8 | **Filtering** (`?filter[field]=value`, AND/OR logic, type coercion) | `query_builder.rb` |
 | 9 | **Sorting** (`?sort=-created_at,title`) | `query_builder.rb` |
 | 10 | **Full-Text Search** (`?search=term`, dot-notation for relationships via joins) | `query_builder.rb` |
