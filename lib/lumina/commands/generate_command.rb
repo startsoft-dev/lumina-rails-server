@@ -1,16 +1,13 @@
 # frozen_string_literal: true
 
-require "rails/command"
+require "lumina/commands/base_command"
 
 module Lumina
   module Commands
     # Interactive scaffold generator — mirrors Laravel `php artisan lumina:generate` exactly.
     #
     # Usage: rails lumina:generate  (or rails lumina:g)
-    class GenerateCommand < Rails::Command::Base
-      namespace "lumina:generate"
-
-      desc "generate", "Generate Lumina resources (Model, Policy, Scope)"
+    class GenerateCommand < BaseCommand
       def perform
         print_banner
         print_styled_header
