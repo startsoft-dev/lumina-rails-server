@@ -23,6 +23,7 @@ Gem::Specification.new do |spec|
   spec.add_dependency "discard", "~> 1.3"
   spec.add_dependency "bcrypt", "~> 3.1"
   spec.add_dependency "tty-prompt", "~> 0.23"
+  spec.add_dependency "request_store", "~> 1.5"
 
   spec.add_development_dependency "rspec-rails", "~> 7.0"
   spec.add_development_dependency "factory_bot_rails", "~> 6.4"
