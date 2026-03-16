@@ -7,6 +7,7 @@ PATH
       pagy (~> 9.0)
       pundit (~> 2.3)
       rails (>= 8.0)
+      tty-prompt (~> 0.23)
 
 GEM
   remote: https://rubygems.org/
@@ -162,6 +163,8 @@ GEM
     nokogiri (1.19.1-x86_64-linux-musl)
       racc (~> 1.4)
     pagy (9.4.0)
+    pastel (0.8.0)
+      tty-color (~> 0.5)
     pp (0.6.3)
       prettyprint
     prettyprint (0.2.0)
@@ -253,6 +256,16 @@ GEM
     thor (1.5.0)
     timeout (0.6.0)
     tsort (0.2.0)
+    tty-color (0.6.0)
+    tty-cursor (0.7.1)
+    tty-prompt (0.23.1)
+      pastel (~> 0.8)
+      tty-reader (~> 0.8)
+    tty-reader (0.9.0)
+      tty-cursor (~> 0.7)
+      tty-screen (~> 0.8)
+      wisper (~> 2.0)
+    tty-screen (0.8.2)
     tzinfo (2.0.6)
       concurrent-ruby (~> 1.0)
     uri (1.1.1)
@@ -261,6 +274,7 @@ GEM
       base64
       websocket-extensions (>= 0.1.0)
     websocket-extensions (0.1.5)
+    wisper (2.0.1)
     zeitwerk (2.7.5)
 
 PLATFORMS

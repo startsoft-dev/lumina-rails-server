@@ -27,20 +27,27 @@ module Lumina
       require "lumina/policies/resource_policy"
       require "lumina/policies/invitation_policy"
 
-      # Models
+      # Query builder and routes
       require "lumina/query_builder"
       require "lumina/routes"
-      require "lumina/models/lumina_model"
-      require "lumina/models/audit_log"
-      require "lumina/models/organization_invitation"
 
       # Controllers
       require "lumina/controllers/resources_controller"
       require "lumina/controllers/auth_controller"
       require "lumina/controllers/invitations_controller"
 
-      # Mailers
-      require "lumina/mailers/invitation_mailer"
+      # Mailers (only if ActionMailer is available)
+      require "lumina/mailers/invitation_mailer" if defined?(ActionMailer)
+    end
+
+    # Models that inherit from ApplicationRecord must be loaded after
+    # ActiveRecord is fully initialized
+    initializer "lumina.models", after: :load_active_record do
+      ActiveSupport.on_load(:active_record) do
+        require "lumina/models/lumina_model"
+        require "lumina/models/audit_log"
+        require "lumina/models/organization_invitation"
+      end
     end
 
     initializer "lumina.routes", after: :load_config_initializers do |app|

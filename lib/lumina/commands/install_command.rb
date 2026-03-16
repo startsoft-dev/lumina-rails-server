@@ -15,31 +15,26 @@ module Lumina
         say "+ Lumina :: Install :: Let's build something great +", :cyan
         say ""
 
-        features = prompt_multiselect(
-          "Which features would you like to configure?",
-          {
-            "publish" => "Publish config & routes",
-            "multi_tenant" => "Multi-tenant support (Organizations, Roles)",
-            "audit_trail" => "Audit trail (change logging)"
-          },
-          default: ["publish"]
-        )
+        features = multi_select("Which features would you like to configure?") do |menu|
+          menu.default 1
+          menu.choice "Publish config & routes", "publish"
+          menu.choice "Multi-tenant support (Organizations, Roles)", "multi_tenant"
+          menu.choice "Audit trail (change logging)", "audit_trail"
+        end
 
-        test_framework = prompt_select(
-          "Which test framework do you use?",
-          { "rspec" => "RSpec", "minitest" => "Minitest" },
-          default: "rspec"
-        )
+        test_framework = select("Which test framework do you use?") do |menu|
+          menu.default 1
+          menu.choice "RSpec", "rspec"
+          menu.choice "Minitest", "minitest"
+        end
 
         identifier_column = "id"
         roles = ["admin"]
 
         if features.include?("multi_tenant")
-          identifier_column = ask("What column should be used to identify organizations? [id]:")
-          identifier_column = "id" if identifier_column.blank?
+          identifier_column = ask("What column should be used to identify organizations?", default: "id")
 
-          roles_input = ask("What roles should your app have? [admin, editor, viewer]:")
-          roles_input = "admin, editor, viewer" if roles_input.blank?
+          roles_input = ask("What roles should your app have?", default: "admin, editor, viewer")
           roles = (["admin"] + roles_input.split(",").map(&:strip)).uniq
         end
 
@@ -166,7 +161,6 @@ module Lumina
           template = File.join(templates_dir, "#{model}.rb.erb")
           next unless File.exist?(template)
 
-          dest_name = model.camelize
           content = ERB.new(File.read(template), trim_mode: "-").result_with_hash(roles: roles)
           File.write(models_path.join("#{model}.rb"), content)
         end
@@ -280,13 +274,13 @@ module Lumina
         has_migrations = features.include?("multi_tenant") || features.include?("audit_trail")
 
         if has_migrations
-          if yes?("Would you like to run migrations now? [y/N]")
+          if yes?("Would you like to run migrations now?")
             task("Running migrations") { system("rails db:migrate") }
           end
         end
 
         if features.include?("multi_tenant")
-          if yes?("Would you like to seed the database? [y/N]")
+          if yes?("Would you like to seed the database?")
             task("Seeding database") { system("rails db:seed") }
           end
         end
@@ -299,14 +293,14 @@ module Lumina
         step = 1
 
         if features.include?("audit_trail")
-          say "  #{step}. Add Lumina::HasAuditTrail concern to your models:", :white
-          say "     include Lumina::HasAuditTrail", :light_black
+          say "  #{step}. Add Lumina::HasAuditTrail concern to your models:"
+          say "     include Lumina::HasAuditTrail"
           step += 1
         end
 
         if features.include?("multi_tenant")
-          say "  #{step}. Add Lumina::HasPermissions concern to your User model:", :white
-          say "     include Lumina::HasPermissions", :light_black
+          say "  #{step}. Add Lumina::HasPermissions concern to your User model:"
+          say "     include Lumina::HasPermissions"
           step += 1
         end
 
@@ -389,15 +383,12 @@ module Lumina
       def install_ai_skill
         say ""
 
-        ai_tools = prompt_multiselect(
-          "Install Lumina AI Skill for which tools? (select none to skip)",
-          {
-            "claude" => "Claude Code (.claude/skills/lumina/)",
-            "cursor" => "Cursor (.cursor/rules/lumina/)",
-            "ai" => "AI Directory (.ai/skills/lumina/)"
-          },
-          default: ["claude"]
-        )
+        ai_tools = multi_select("Install Lumina AI Skill for which tools? (select none to skip)") do |menu|
+          menu.default 1
+          menu.choice "Claude Code (.claude/skills/lumina/)", "claude"
+          menu.choice "Cursor (.cursor/rules/lumina/)", "cursor"
+          menu.choice "AI Directory (.ai/skills/lumina/)", "ai"
+        end
 
         return if ai_tools.empty?
 
@@ -424,7 +415,7 @@ module Lumina
 
         unless response.is_a?(Net::HTTPSuccess)
           say "  Could not download skill file. You can manually download it from:", :yellow
-          say "  #{url}", :light_black
+          say "  #{url}"
           return
         end
 
@@ -442,47 +433,7 @@ module Lumina
         say "  AI Skill installed successfully.", :green
       rescue StandardError => e
         say "  Could not download skill file (#{e.message}). You can manually download it from:", :yellow
-        say "  #{url}", :light_black
-      end
-
-      # ----------------------------------------------------------------
-      # Prompt helpers
-      # ----------------------------------------------------------------
-
-      def prompt_select(label, options, default: nil)
-        say label, :yellow
-        options.each_with_index do |(key, desc), i|
-          marker = key == default ? " (default)" : ""
-          say "  #{i + 1}. #{desc}#{marker}"
-        end
-
-        keys = options.keys
-        choice = ask("Enter number [1-#{keys.length}]:")
-        idx = (choice.to_i - 1).clamp(0, keys.length - 1)
-        keys[idx]
-      end
-
-      def prompt_multiselect(label, options, default: [])
-        say label, :yellow
-        options.each_with_index do |(key, desc), i|
-          marker = default.include?(key) ? " *" : ""
-          say "  #{i + 1}. #{desc}#{marker}"
-        end
-
-        say "  Enter numbers separated by commas (e.g., 1,2,3):"
-        input = ask("")
-        if input.blank?
-          default
-        else
-          keys = options.keys
-          input.split(",").map { |n| keys[n.to_i - 1] }.compact
-        end
-      end
-
-      def task(description)
-        say "  → #{description}...", :cyan
-        yield
-        say "    ✓ Done", :green
+        say "  #{url}"
       end
     end
   end

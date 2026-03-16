@@ -2,14 +2,8 @@
 
 require "lumina/version"
 require "lumina/configuration"
-
-if defined?(Rails::Engine)
-  require "lumina/engine"
-end
-
-if defined?(Rails::Railtie)
-  require "lumina/railtie"
-end
+require "rails"
+require "lumina/engine"
 
 module Lumina
   class << self

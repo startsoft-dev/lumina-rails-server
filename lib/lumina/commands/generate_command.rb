@@ -12,14 +12,11 @@ module Lumina
         print_banner
         print_styled_header
 
-        type = prompt_select(
-          "What type of resource would you like to generate?",
-          {
-            "model" => "Model (with migration and factory)",
-            "policy" => "Policy (extends ResourcePolicy)",
-            "scope" => "Scope (for ScopedDB)"
-          }
-        )
+        type = select("What type of resource would you like to generate?") do |menu|
+          menu.choice "Model (with migration and factory)", "model"
+          menu.choice "Policy (extends ResourcePolicy)", "policy"
+          menu.choice "Scope (for ScopedDB)", "scope"
+        end
 
         name = ask("What is the resource name? (PascalCase singular, e.g., Post):")
         name = name.strip.camelize
@@ -90,17 +87,14 @@ module Lumina
         is_multi_tenant = multi_tenant_enabled?
 
         if is_multi_tenant
-          belongs_to_org = yes?("Does this model belong to an organization? [y/N]")
+          belongs_to_org = yes?("Does this model belong to an organization?")
 
           unless belongs_to_org
             existing_models = get_existing_models
             if existing_models.any?
-              has_parent = yes?("Does this model have a parent that belongs to an organization? [y/N]")
+              has_parent = yes?("Does this model have a parent that belongs to an organization?")
               if has_parent
-                owner_model = prompt_select(
-                  "Which model is the parent owner?",
-                  existing_models.to_h { |m| [m, m] }
-                )
+                owner_model = select("Which model is the parent owner?", existing_models)
                 owner_relation = owner_model.underscore.camelize(:lower)
               end
             end
@@ -109,7 +103,7 @@ module Lumina
 
         # Collect columns
         columns = []
-        if yes?("Would you like to define columns interactively? [y/N]")
+        if yes?("Would you like to define columns interactively?")
           columns = collect_columns
         end
 
@@ -206,7 +200,7 @@ module Lumina
         say ""
         say "#{policy_name} generated successfully!", :green
         say ""
-        say "  Created: app/policies/#{policy_name.underscore}.rb", :white
+        say "  Created: app/policies/#{policy_name.underscore}.rb"
         say ""
         say "  Next steps:", :yellow
         say "    1. Customize the authorization methods you need."
@@ -228,7 +222,7 @@ module Lumina
         say ""
         say "#{scope_name} generated successfully!", :green
         say ""
-        say "  Created: app/models/scopes/#{scope_name.underscore}.rb", :white
+        say "  Created: app/models/scopes/#{scope_name.underscore}.rb"
         say ""
       end
 
@@ -240,23 +234,23 @@ module Lumina
         columns = []
 
         loop do
-          col_name = ask("Column name (snake_case, e.g., title):")
-          break if col_name.blank?
+          col_name = ask("Column name (snake_case, e.g., title) — leave blank to finish:")
+          break if col_name.nil? || col_name.blank?
 
-          col_type = prompt_select("Column type for '#{col_name}'", {
-            "string" => "string (VARCHAR 255)",
-            "text" => "text (TEXT)",
-            "integer" => "integer",
-            "bigint" => "bigInteger",
-            "boolean" => "boolean",
-            "date" => "date",
-            "datetime" => "datetime",
-            "decimal" => "decimal (8, 2)",
-            "float" => "float",
-            "json" => "json",
-            "uuid" => "uuid",
-            "references" => "references (foreign key)"
-          })
+          col_type = select("Column type for '#{col_name}'") do |menu|
+            menu.choice "string (VARCHAR 255)", "string"
+            menu.choice "text (TEXT)", "text"
+            menu.choice "integer", "integer"
+            menu.choice "bigInteger", "bigint"
+            menu.choice "boolean", "boolean"
+            menu.choice "date", "date"
+            menu.choice "datetime", "datetime"
+            menu.choice "decimal (8, 2)", "decimal"
+            menu.choice "float", "float"
+            menu.choice "json", "json"
+            menu.choice "uuid", "uuid"
+            menu.choice "references (foreign key)", "references"
+          end
 
           column = {
             name: col_name,
@@ -271,19 +265,16 @@ module Lumina
           if col_type == "references"
             existing = get_existing_models
             if existing.any?
-              column[:foreign_model] = prompt_select(
-                "Which model does '#{col_name}' reference?",
-                existing.to_h { |m| [m, m] }
-              )
+              column[:foreign_model] = select("Which model does '#{col_name}' reference?", existing)
             end
           end
 
-          column[:nullable] = yes?("Is '#{col_name}' nullable? [y/N]")
-          column[:unique] = yes?("Should '#{col_name}' be unique? [y/N]")
+          column[:nullable] = yes?("Is '#{col_name}' nullable?")
+          column[:unique] = yes?("Should '#{col_name}' be unique?")
 
           columns << column
 
-          break unless yes?("Add another column? [y/N]")
+          break unless yes?("Add another column?")
         end
 
         columns
@@ -291,10 +282,17 @@ module Lumina
 
       def collect_additional_options
         say "Additional options:", :yellow
+
+        options = multi_select("Select additional options:") do |menu|
+          menu.choice "Soft deletes", :soft_deletes
+          menu.choice "Generate policy", :policy
+          menu.choice "Audit trail", :audit_trail
+        end
+
         {
-          soft_deletes: yes?("  Add soft deletes? [y/N]"),
-          policy: yes?("  Generate policy? [y/N]"),
-          audit_trail: yes?("  Add audit trail? [y/N]")
+          soft_deletes: options.include?(:soft_deletes),
+          policy: options.include?(:policy),
+          audit_trail: options.include?(:audit_trail)
         }
       end
 
@@ -313,12 +311,12 @@ module Lumina
         say ""
 
         non_admin_roles.each do |role|
-          access = prompt_select("Access level for '#{role}'", {
-            "editor" => "Editor — all actions on this model",
-            "viewer" => "Viewer — read-only (index, show)",
-            "writer" => "Writer — create & edit (index, show, store, update)",
-            "none" => "No access"
-          })
+          access = select("Access level for '#{role}'") do |menu|
+            menu.choice "Editor — all actions on this model", "editor"
+            menu.choice "Viewer — read-only (index, show)", "viewer"
+            menu.choice "Writer — create & edit (index, show, store, update)", "writer"
+            menu.choice "No access", "none"
+          end
           role_access[role] = access
         end
 
@@ -441,9 +439,6 @@ module Lumina
       # Helpers
       # ----------------------------------------------------------------
 
-      # Returns an array of Rails validation option strings for a column.
-      # e.g. ["length: { maximum: 255 }"]
-      # These are appended after `validates :field_name, ` in the template.
       def column_to_rails_validations(column)
         validations = []
 
@@ -515,7 +510,6 @@ module Lumina
         config_path = Rails.root.join("config/initializers/lumina.rb")
         return [] unless File.exist?(config_path)
 
-        # Try to parse roles from config
         content = File.read(config_path)
         if content =~ /roles.*?\[(.*?)\]/m
           $1.scan(/"([^"]+)"/).flatten
@@ -546,24 +540,6 @@ module Lumina
         say "  3. Run tests: rspec"
         say "  4. Your API endpoints: GET/POST /api/#{table_name}, GET/PUT/DELETE /api/#{table_name}/{id}"
         say ""
-      end
-
-      def prompt_select(label, options, default: nil)
-        say label, :yellow
-        keys = options.keys
-        keys.each_with_index do |key, i|
-          marker = key == default ? " (default)" : ""
-          say "  #{i + 1}. #{options[key]}#{marker}"
-        end
-        choice = ask("Enter number [1-#{keys.length}]:")
-        idx = (choice.to_i - 1).clamp(0, keys.length - 1)
-        keys[idx]
-      end
-
-      def task(description)
-        say "  → #{description}...", :cyan
-        yield
-        say "    ✓ Done", :green
       end
     end
   end
