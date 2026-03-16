@@ -10,8 +10,8 @@ module Lumina
     class InvitationLinkCommand < BaseCommand
       attr_accessor :email, :organization_identifier, :options
 
-      def initialize(shell = Thor::Shell::Color.new)
-        super(shell)
+      def initialize
+        super
         @options = { role: nil, create: false }
       end
 

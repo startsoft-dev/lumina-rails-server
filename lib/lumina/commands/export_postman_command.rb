@@ -12,8 +12,8 @@ module Lumina
     class ExportPostmanCommand < BaseCommand
       attr_accessor :options
 
-      def initialize(shell = Thor::Shell::Color.new)
-        super(shell)
+      def initialize
+        super
         @options = {
           output: "postman_collection.json",
           base_url: "http://localhost:3000/api",

@@ -440,7 +440,7 @@ module Lumina
       return nil if matching_paths.empty?
 
       if matching_paths.length > 1
-        Rails.logger.debug(
+        Rails.logger&.debug(
           "Lumina: Model #{klass.name} has multiple BelongsTo paths to Organization. " \
           "Using '#{matching_paths[0]}'. " \
           "Paths found: #{matching_paths.inspect}"

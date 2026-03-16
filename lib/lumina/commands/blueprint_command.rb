@@ -19,8 +19,8 @@ module Lumina
     class BlueprintCommand < BaseCommand
       attr_accessor :options
 
-      def initialize(shell = Thor::Shell::Color.new)
-        super(shell)
+      def initialize
+        super
         @options = {
           dir: ".lumina/blueprints",
           model: nil,
