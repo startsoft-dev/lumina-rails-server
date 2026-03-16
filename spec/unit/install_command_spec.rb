@@ -41,6 +41,25 @@ RSpec.describe Lumina::Commands::InstallCommand do
 
       expect(Dir.exist?(File.join(tmp_dir, "config/initializers"))).to be true
     end
+
+    it "uses fully qualified middleware constant in comments" do
+      command.send(:publish_config, "rspec")
+
+      path = File.join(tmp_dir, "config/initializers/lumina.rb")
+      content = File.read(path)
+      expect(content).to include("Lumina::Middleware::ResolveOrganizationFromRoute")
+      expect(content).not_to match(/\b(?<!:)ResolveOrganizationFromRoute/)
+    end
+
+    it "publishes a config that can be evaluated without NameError" do
+      command.send(:publish_config, "rspec")
+
+      path = File.join(tmp_dir, "config/initializers/lumina.rb")
+      content = File.read(path)
+
+      Lumina.reset_configuration!
+      expect { eval(content) }.not_to raise_error
+    end
   end
 
   # ------------------------------------------------------------------
@@ -294,6 +313,20 @@ RSpec.describe Lumina::Commands::InstallCommand do
       config_path = File.join(tmp_dir, "config/initializers/lumina.rb")
       content = File.read(config_path, encoding: "UTF-8")
       expect(content.scan("config.model :organizations").length).to eq(1)
+    end
+
+    it "generates config that can be evaluated without NameError" do
+      command.send(:update_config, "slug")
+
+      config_path = File.join(tmp_dir, "config/initializers/lumina.rb")
+      content = File.read(config_path, encoding: "UTF-8")
+
+      # The middleware constant must be resolvable at eval time
+      expect(defined?(Lumina::Middleware::ResolveOrganizationFromRoute)).to be_truthy
+
+      # The generated config must eval without raising NameError
+      Lumina.reset_configuration!
+      expect { eval(content) }.not_to raise_error
     end
   end
 

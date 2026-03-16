@@ -2,6 +2,7 @@
 
 require "lumina/version"
 require "lumina/configuration"
+require "lumina/middleware/resolve_organization_from_route"
 require "rails"
 require "lumina/engine"
 
