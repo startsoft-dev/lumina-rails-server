@@ -373,6 +373,37 @@ RSpec.describe Lumina::Commands::GenerateCommand do
       FileUtils.rm_f(File.join(tmp_dir, "config/initializers/lumina.rb"))
       expect { command.send(:register_model_in_config, "Article") }.not_to raise_error
     end
+
+    it "detects config block variable name and uses it" do
+      config_path = File.join(tmp_dir, "config/initializers/lumina.rb")
+      File.write(config_path, <<~RUBY)
+        Lumina.configure do |config|
+          # config.model :posts, 'Post'
+        end
+      RUBY
+
+      command.send(:register_model_in_config, "Article")
+
+      content = File.read(config_path)
+      expect(content).to include("config.model :articles, 'Article'")
+      expect(content).not_to include("c.model")
+    end
+
+    it "does not treat commented-out example as existing model" do
+      config_path = File.join(tmp_dir, "config/initializers/lumina.rb")
+      File.write(config_path, <<~RUBY)
+        Lumina.configure do |c|
+          # c.model :comments, 'Comment'
+          # c.model :posts, 'Post'
+        end
+      RUBY
+
+      command.send(:register_model_in_config, "Comment")
+
+      content = File.read(config_path)
+      expect(content).to include("  c.model :comments, 'Comment'\n")
+      expect(content.scan(/^\s+c\.model :comments/).length).to eq(1)
+    end
   end
 
   # ------------------------------------------------------------------

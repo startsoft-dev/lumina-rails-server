@@ -435,7 +435,8 @@ module Lumina
         content = File.read(config_path)
         slug = name.underscore.pluralize
 
-        return if content.include?(":#{slug}")
+        # Check if model is already registered (non-commented line)
+        return if content.match?(/^\s+\w+\.model\s+:#{slug}\b/)
 
         # Detect the block variable name used in the config file (e.g., config, c, etc.)
         block_var = content.match(/Lumina\.configure\s+do\s+\|(\w+)\|/)&.captures&.first || "config"
