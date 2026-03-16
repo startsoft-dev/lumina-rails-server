@@ -31,12 +31,20 @@ module Lumina
         @prompt.yes?(message)
       end
 
-      def select(label, choices, **options)
-        @prompt.select(label, choices, **options)
+      def select(label, choices = nil, **options, &block)
+        if block
+          @prompt.select(label, **options, &block)
+        else
+          @prompt.select(label, choices, **options)
+        end
       end
 
-      def multi_select(label, choices, **options)
-        @prompt.multi_select(label, choices, **options)
+      def multi_select(label, choices = nil, **options, &block)
+        if block
+          @prompt.multi_select(label, **options, &block)
+        else
+          @prompt.multi_select(label, choices, **options)
+        end
       end
 
       def task(description)
