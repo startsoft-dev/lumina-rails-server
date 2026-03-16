@@ -64,13 +64,15 @@ RSpec.describe Lumina::Commands::InstallCommand do
   # ------------------------------------------------------------------
 
   describe "#create_multi_tenant_migrations" do
-    it "creates 3 migration files" do
+    it "creates 4 migration files" do
       command.send(:create_multi_tenant_migrations)
 
+      user_files = Dir.glob(File.join(tmp_dir, "db/migrate/*_create_users.rb"))
       org_files = Dir.glob(File.join(tmp_dir, "db/migrate/*_create_organizations.rb"))
       role_files = Dir.glob(File.join(tmp_dir, "db/migrate/*_create_roles.rb"))
       user_role_files = Dir.glob(File.join(tmp_dir, "db/migrate/*_create_user_roles.rb"))
 
+      expect(user_files.length).to eq(1)
       expect(org_files.length).to eq(1)
       expect(role_files.length).to eq(1)
       expect(user_role_files.length).to eq(1)
@@ -101,14 +103,23 @@ RSpec.describe Lumina::Commands::InstallCommand do
   # ------------------------------------------------------------------
 
   describe "#create_multi_tenant_models" do
-    it "creates Organization, Role, and UserRole models" do
+    it "creates User, Organization, Role, and UserRole models" do
       command.send(:create_multi_tenant_models, %w[admin editor viewer])
 
-      %w[organization role user_role].each do |model|
+      %w[user organization role user_role].each do |model|
         path = File.join(tmp_dir, "app/models/#{model}.rb")
         expect(File.exist?(path)).to be true
         expect(File.read(path)).not_to be_empty
       end
+    end
+
+    it "generates User model with HasPermissions and has_secure_password" do
+      command.send(:create_multi_tenant_models, %w[admin])
+
+      user_content = File.read(File.join(tmp_dir, "app/models/user.rb"))
+      expect(user_content).to include("Lumina::HasPermissions")
+      expect(user_content).to include("has_secure_password")
+      expect(user_content).to include("has_many :user_roles")
     end
 
     it "passes roles to the Role model template" do
@@ -124,10 +135,10 @@ RSpec.describe Lumina::Commands::InstallCommand do
   # ------------------------------------------------------------------
 
   describe "#create_factories" do
-    it "creates 3 factory files in spec/factories" do
+    it "creates 4 factory files in spec/factories" do
       command.send(:create_factories)
 
-      %w[organizations roles user_roles].each do |factory|
+      %w[users organizations roles user_roles].each do |factory|
         path = File.join(tmp_dir, "spec/factories/#{factory}.rb")
         expect(File.exist?(path)).to be true
         expect(File.read(path)).not_to be_empty
@@ -244,38 +255,44 @@ RSpec.describe Lumina::Commands::InstallCommand do
       expect { command.send(:update_config, "id") }.not_to raise_error
     end
 
-    it "adds organization and role models to config when marker present" do
-      # The update_config method replaces "# c.model :posts, 'Post'" marker
-      # Write a config that has the exact marker the method looks for
-      config_path = File.join(tmp_dir, "config/initializers/lumina.rb")
-      File.write(config_path, "Lumina.configure do |c|\n  # c.model :posts, 'Post'\n  # c.route_group :default\nend\n")
-
+    it "adds organization and role models to config" do
       command.send(:update_config, "slug")
 
+      config_path = File.join(tmp_dir, "config/initializers/lumina.rb")
       updated = File.read(config_path, encoding: "UTF-8")
-      expect(updated).to include("c.model :organizations, 'Organization'")
-      expect(updated).to include("c.model :roles, 'Role'")
+      expect(updated).to include("config.model :organizations, 'Organization'")
+      expect(updated).to include("config.model :roles, 'Role'")
     end
 
-    it "adds tenant route group to config when marker present" do
-      config_path = File.join(tmp_dir, "config/initializers/lumina.rb")
-      File.write(config_path, "Lumina.configure do |c|\n  # c.model :posts, 'Post'\n  # c.route_group :default\nend\n")
-
+    it "adds tenant route group to config" do
       command.send(:update_config, "slug")
 
+      config_path = File.join(tmp_dir, "config/initializers/lumina.rb")
       content = File.read(config_path, encoding: "UTF-8")
-      expect(content).to include("c.route_group :tenant")
+      expect(content).to include("config.route_group :tenant")
+    end
+
+    it "uses the config block variable, not a different name" do
+      command.send(:update_config, "slug")
+
+      config_path = File.join(tmp_dir, "config/initializers/lumina.rb")
+      content = File.read(config_path, encoding: "UTF-8")
+      # All non-comment lines using model/route_group must use "config.", not "c."
+      active_lines = content.lines.reject { |l| l.strip.start_with?("#") }
+      active_lines.each do |line|
+        next unless line.match?(/\.(model|route_group)\s+:/)
+
+        expect(line).to include("config."), "Expected 'config.' but found: #{line.strip}"
+      end
     end
 
     it "does not duplicate organizations model if already present" do
+      command.send(:update_config, "slug")
+      command.send(:update_config, "slug")
+
       config_path = File.join(tmp_dir, "config/initializers/lumina.rb")
-      File.write(config_path, "Lumina.configure do |c|\n  # c.model :posts, 'Post'\n  # c.route_group :default\nend\n")
-
-      command.send(:update_config, "slug")
-      command.send(:update_config, "slug")
-
       content = File.read(config_path, encoding: "UTF-8")
-      expect(content.scan("c.model :organizations").length).to eq(1)
+      expect(content.scan("config.model :organizations").length).to eq(1)
     end
   end
 
@@ -325,18 +342,18 @@ RSpec.describe Lumina::Commands::InstallCommand do
 
   describe "#print_next_steps" do
     it "prints audit trail step when included" do
-      expect(command).to receive(:say).with(/HasAuditTrail/, anything).at_least(:once)
+      expect(command).to receive(:say).with(/HasAuditTrail/).at_least(:once)
       command.send(:print_next_steps, ["audit_trail"])
     end
 
     it "prints multi_tenant step when included" do
-      expect(command).to receive(:say).with(/HasPermissions/, anything).at_least(:once)
+      expect(command).to receive(:say).with(/HasPermissions/).at_least(:once)
       command.send(:print_next_steps, ["multi_tenant"])
     end
 
     it "prints both steps when both features included" do
-      expect(command).to receive(:say).with(/HasAuditTrail/, anything).at_least(:once)
-      expect(command).to receive(:say).with(/HasPermissions/, anything).at_least(:once)
+      expect(command).to receive(:say).with(/HasAuditTrail/).at_least(:once)
+      expect(command).to receive(:say).with(/HasPermissions/).at_least(:once)
       command.send(:print_next_steps, ["audit_trail", "multi_tenant"])
     end
   end

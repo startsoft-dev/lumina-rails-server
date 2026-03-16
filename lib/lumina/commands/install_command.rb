@@ -210,18 +210,18 @@ module Lumina
         )
 
         # Add organization and role models
-        unless content.include?("c.model :organizations")
+        unless content.include?("config.model :organizations")
           content = content.gsub(
-            "# c.model :posts, 'Post'",
-            "c.model :organizations, 'Organization'\n  c.model :roles, 'Role'\n  # c.model :posts, 'Post'"
+            "# config.model :posts, 'Post'",
+            "config.model :organizations, 'Organization'\n  config.model :roles, 'Role'\n  # config.model :posts, 'Post'"
           )
         end
 
         # Add tenant route group
-        unless content.include?("c.route_group :tenant")
+        unless content.include?("config.route_group :tenant")
           content = content.gsub(
-            "# c.route_group :default",
-            "c.route_group :tenant, prefix: \":organization\", middleware: [ResolveOrganizationFromRoute], models: :all\n  # c.route_group :default"
+            "# config.route_group :default",
+            "config.route_group :tenant, prefix: \":organization\", middleware: [ResolveOrganizationFromRoute], models: :all\n  # config.route_group :default"
           )
         end
 
