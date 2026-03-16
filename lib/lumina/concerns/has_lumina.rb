@@ -34,6 +34,7 @@ module Lumina
       class_attribute :lumina_model_middleware, default: []
       class_attribute :lumina_middleware_actions_map, default: {}
       class_attribute :lumina_except_actions_list, default: []
+      class_attribute :lumina_owner_path, default: nil
     end
 
     class_methods do
