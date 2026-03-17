@@ -22,9 +22,6 @@ module Lumina
       end
 
       def perform
-        # Ensure ApplicationRecord is loaded before model classes that inherit from it
-        "ApplicationRecord".safe_constantize if defined?(Rails)
-
         output_path = options[:output]
         base_url = options[:base_url].chomp("/")
         project_name = options[:project_name] || Rails.application.class.module_parent_name rescue "API"

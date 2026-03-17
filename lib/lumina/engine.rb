@@ -41,9 +41,9 @@ module Lumina
     end
 
     # Models that inherit from ApplicationRecord must be loaded after
-    # ActiveRecord is fully initialized
+    # the app has initialized (so ApplicationRecord is defined)
     initializer "lumina.models", after: :load_active_record do
-      ActiveSupport.on_load(:active_record) do
+      config.after_initialize do
         require "lumina/models/lumina_model"
         require "lumina/models/audit_log"
         require "lumina/models/organization_invitation"
