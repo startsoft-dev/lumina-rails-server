@@ -3,156 +3,36 @@
 module Lumina
   module Blueprint
     module Generators
-      # Generates RSpec test files with CRUD access, field visibility, and forbidden field tests.
-      # Port of lumina-adonis-server test_generator.ts.
+      # Generates RSpec request spec files with per-role contexts and individual action tests.
       class TestGenerator
         ALL_ACTIONS = %w[index show store update destroy trashed restore forceDelete].freeze
 
-        # Generate a complete RSpec test file.
-        #
-        # @param blueprint [Hash] ParsedBlueprint
-        # @param is_multi_tenant [Boolean]
-        # @param org_identifier [String] 'slug' or 'id'
-        # @return [String] Ruby source code
+        ACTION_LABELS = {
+          "index" => "list",
+          "show" => "show",
+          "store" => "create",
+          "update" => "update",
+          "destroy" => "delete",
+          "trashed" => "view trashed",
+          "restore" => "restore",
+          "forceDelete" => "force delete"
+        }.freeze
+
         def generate(blueprint, is_multi_tenant, org_identifier = "slug")
           model = blueprint[:model]
           slug = blueprint[:slug]
           permissions = blueprint[:permissions]
           columns = blueprint[:columns]
 
-          crud_tests = build_crud_access_tests(slug, permissions, is_multi_tenant, org_identifier)
-          visibility_tests = build_field_visibility_tests(slug, permissions, columns, is_multi_tenant, org_identifier)
-          forbidden_tests = build_forbidden_field_tests(slug, permissions, columns, is_multi_tenant, org_identifier)
+          role_contexts = build_role_contexts(slug, permissions, columns, is_multi_tenant, org_identifier)
 
           if is_multi_tenant
-            wrap_multi_tenant(model, slug, crud_tests, visibility_tests, forbidden_tests, org_identifier)
+            wrap_multi_tenant(model, slug, role_contexts, org_identifier)
           else
-            wrap_non_tenant(model, slug, crud_tests, visibility_tests, forbidden_tests)
+            wrap_non_tenant(model, slug, role_contexts)
           end
         end
 
-        # Build CRUD access tests for all roles.
-        #
-        # @return [String]
-        def build_crud_access_tests(slug, permissions, is_multi_tenant, org_identifier)
-          return "" if permissions.empty?
-
-          all_actions = ALL_ACTIONS.dup
-          lines = []
-
-          permissions.each do |role, perm|
-            allowed = perm[:actions] & all_actions
-            blocked = all_actions - perm[:actions]
-
-            if allowed.any?
-              lines << "    it 'allows #{role} to access allowed #{slug} endpoints' do"
-              lines << build_user_setup(role, perm[:actions], slug, is_multi_tenant, org_identifier)
-              lines << build_endpoint_assertions(slug, allowed, is_multi_tenant, org_identifier, true)
-              lines << "    end"
-              lines << ""
-            end
-
-            if blocked.any?
-              lines << "    it 'blocks #{role} from blocked #{slug} endpoints' do"
-              lines << build_user_setup(role, perm[:actions], slug, is_multi_tenant, org_identifier)
-              lines << build_endpoint_assertions(slug, blocked, is_multi_tenant, org_identifier, false)
-              lines << "    end"
-              lines << ""
-            end
-          end
-
-          lines.join("\n")
-        end
-
-        # Build field visibility tests.
-        #
-        # @return [String]
-        def build_field_visibility_tests(slug, permissions, columns, is_multi_tenant, org_identifier)
-          lines = []
-
-          permissions.each do |role, perm|
-            next unless perm[:actions].include?("show")
-            next if perm[:show_fields] == ["*"]
-            next if perm[:show_fields].empty?
-
-            all_fields = columns.map { |c| c[:name] }
-            visible = perm[:show_fields].include?("*") ? all_fields : perm[:show_fields]
-            hidden = all_fields - visible + (perm[:hidden_fields] || [])
-            hidden = hidden.uniq - visible
-
-            next if hidden.empty? && visible.empty?
-
-            lines << "    it 'shows only permitted fields for #{role} on #{slug}' do"
-
-            if is_multi_tenant
-              lines << "      user = create_user_with_role('#{role}', org, #{actions_to_permissions(perm[:actions], slug)})"
-              lines << "      record = create(:#{slug.chomp('s')}, organization: org)"
-              lines << "      get \"/api/\#{org.#{org_identifier}}/#{slug}/\#{record.id}\", headers: auth_headers(user)"
-            else
-              lines << "      user = create_user_with_permissions(#{actions_to_permissions(perm[:actions], slug)})"
-              lines << "      record = create(:#{slug.chomp('s')})"
-              lines << "      get \"/api/#{slug}/\#{record.id}\", headers: auth_headers(user)"
-            end
-
-            lines << "      expect(response).to have_http_status(:ok)"
-            lines << "      data = JSON.parse(response.body)['data']"
-
-            visible.each do |field|
-              lines << "      expect(data).to have_key('#{field}')"
-            end
-
-            hidden.each do |field|
-              lines << "      expect(data).not_to have_key('#{field}')"
-            end
-
-            lines << "    end"
-            lines << ""
-          end
-
-          lines.join("\n")
-        end
-
-        # Build forbidden field tests.
-        #
-        # @return [String]
-        def build_forbidden_field_tests(slug, permissions, columns, is_multi_tenant, org_identifier)
-          lines = []
-
-          permissions.each do |role, perm|
-            next unless perm[:actions].include?("store")
-            next if perm[:create_fields] == ["*"]
-            next if perm[:create_fields].empty?
-
-            all_fields = columns.map { |c| c[:name] }
-            forbidden = all_fields - perm[:create_fields]
-
-            next if forbidden.empty?
-
-            lines << "    it 'returns 403 when #{role} tries to set restricted fields on #{slug}' do"
-
-            if is_multi_tenant
-              lines << "      user = create_user_with_role('#{role}', org, #{actions_to_permissions(perm[:actions], slug)})"
-              lines << "      post \"/api/\#{org.#{org_identifier}}/#{slug}\","
-            else
-              lines << "      user = create_user_with_permissions(#{actions_to_permissions(perm[:actions], slug)})"
-              lines << "      post \"/api/#{slug}\","
-            end
-
-            lines << "        params: { #{forbidden.first}: 'forbidden_value' },"
-            lines << "        headers: auth_headers(user)"
-            lines << "      expect(response).to have_http_status(:forbidden)"
-            lines << "    end"
-            lines << ""
-          end
-
-          lines.join("\n")
-        end
-
-        # Convert actions to permission string for test helpers.
-        #
-        # @param actions [Array<String>]
-        # @param slug [String]
-        # @return [String]
         def actions_to_permissions(actions, slug)
           if (ALL_ACTIONS - actions).empty?
             "['#{slug}.*']"
@@ -164,18 +44,62 @@ module Lumina
 
         private
 
-        def build_user_setup(role, actions, slug, is_multi_tenant, org_identifier)
+        def build_role_contexts(slug, permissions, columns, is_multi_tenant, org_identifier)
+          return "" if permissions.empty?
+
+          lines = []
+
+          permissions.each do |role, perm|
+            allowed = perm[:actions] & ALL_ACTIONS
+            blocked = ALL_ACTIONS - perm[:actions]
+
+            lines << "    context 'as #{role}' do"
+            lines << build_let_user(role, perm[:actions], slug, is_multi_tenant, org_identifier)
+            lines << ""
+
+            # Individual allowed action tests
+            allowed.each do |action|
+              lines << build_single_action_test(slug, action, is_multi_tenant, org_identifier, true)
+              lines << ""
+            end
+
+            # Individual blocked action tests
+            blocked.each do |action|
+              lines << build_single_action_test(slug, action, is_multi_tenant, org_identifier, false)
+              lines << ""
+            end
+
+            # Field visibility tests
+            field_test = build_field_visibility_test(slug, role, perm, columns, is_multi_tenant, org_identifier)
+            if field_test
+              lines << field_test
+              lines << ""
+            end
+
+            # Forbidden field tests
+            forbidden_test = build_forbidden_field_test(slug, role, perm, columns, is_multi_tenant, org_identifier)
+            if forbidden_test
+              lines << forbidden_test
+              lines << ""
+            end
+
+            lines << "    end"
+            lines << ""
+          end
+
+          lines.join("\n")
+        end
+
+        def build_let_user(role, actions, slug, is_multi_tenant, org_identifier)
           perms = actions_to_permissions(actions, slug)
           if is_multi_tenant
-            "      user = create_user_with_role('#{role}', org, #{perms})"
+            "      let(:user) { create_user_with_role('#{role}', org, #{perms}) }"
           else
-            "      user = create_user_with_permissions(#{perms})"
+            "      let(:user) { create_user_with_permissions(#{perms}) }"
           end
         end
 
-        def build_endpoint_assertions(slug, actions, is_multi_tenant, org_identifier, expect_success)
-          lines = []
-
+        def build_single_action_test(slug, action, is_multi_tenant, org_identifier, expect_success)
           action_map = {
             "index" => { method: "get", path: "/#{slug}" },
             "show" => { method: "get", path: "/#{slug}/1" },
@@ -190,30 +114,103 @@ module Lumina
           success_codes = { "store" => ":created" }
           default_success = ":ok"
 
-          actions.each do |action|
-            mapping = action_map[action]
-            next unless mapping
+          mapping = action_map[action]
+          return "" unless mapping
 
-            if is_multi_tenant
-              url = "\"/api/\#{org.#{org_identifier}}#{mapping[:path]}\""
-            else
-              url = "\"/api#{mapping[:path]}\""
-            end
+          label = ACTION_LABELS[action] || action
 
-            if expect_success
-              code = success_codes[action] || default_success
-              lines << "      #{mapping[:method]} #{url}, headers: auth_headers(user)"
-              lines << "      expect(response).to have_http_status(#{code})"
-            else
-              lines << "      #{mapping[:method]} #{url}, headers: auth_headers(user)"
-              lines << "      expect(response).to have_http_status(:forbidden)"
-            end
+          if is_multi_tenant
+            url = "\"/api/\#{org.#{org_identifier}}#{mapping[:path]}\""
+          else
+            url = "\"/api#{mapping[:path]}\""
           end
 
+          if expect_success
+            code = success_codes[action] || default_success
+            verb = "can"
+          else
+            code = ":forbidden"
+            verb = "cannot"
+          end
+
+          lines = []
+          lines << "      it '#{verb} #{label} #{slug}' do"
+          lines << "        #{mapping[:method]} #{url}, headers: auth_headers(user)"
+          lines << "        expect(response).to have_http_status(#{code})"
+          lines << "      end"
           lines.join("\n")
         end
 
-        def wrap_multi_tenant(model, slug, crud_tests, visibility_tests, forbidden_tests, org_identifier)
+        def build_field_visibility_test(slug, role, perm, columns, is_multi_tenant, org_identifier)
+          return nil unless perm[:actions].include?("show")
+          return nil if perm[:show_fields] == ["*"]
+          return nil if perm[:show_fields].empty?
+
+          all_fields = columns.map { |c| c[:name] }
+          visible = perm[:show_fields].include?("*") ? all_fields : perm[:show_fields]
+          hidden = all_fields - visible + (perm[:hidden_fields] || [])
+          hidden = hidden.uniq - visible
+
+          return nil if hidden.empty? && visible.empty?
+
+          lines = []
+          lines << "      it 'shows only permitted fields' do"
+
+          if is_multi_tenant
+            lines << "        record = create(:#{slug.chomp('s')}, organization: org)"
+            lines << "        get \"/api/\#{org.#{org_identifier}}/#{slug}/\#{record.id}\", headers: auth_headers(user)"
+          else
+            lines << "        record = create(:#{slug.chomp('s')})"
+            lines << "        get \"/api/#{slug}/\#{record.id}\", headers: auth_headers(user)"
+          end
+
+          lines << "        expect(response).to have_http_status(:ok)"
+          lines << "        data = JSON.parse(response.body)"
+          lines << ""
+
+          visible.each do |field|
+            lines << "        expect(data).to have_key('#{field}')"
+          end
+
+          if hidden.any?
+            lines << ""
+            hidden.each do |field|
+              lines << "        expect(data).not_to have_key('#{field}')"
+            end
+          end
+
+          lines << "      end"
+          lines.join("\n")
+        end
+
+        def build_forbidden_field_test(slug, role, perm, columns, is_multi_tenant, org_identifier)
+          return nil unless perm[:actions].include?("store")
+          return nil if perm[:create_fields] == ["*"]
+          return nil if perm[:create_fields].empty?
+
+          all_fields = columns.map { |c| c[:name] }
+          forbidden = all_fields - perm[:create_fields]
+
+          return nil if forbidden.empty?
+
+          lines = []
+          lines << "      it 'returns 403 when setting restricted fields' do"
+
+          if is_multi_tenant
+            lines << "        post \"/api/\#{org.#{org_identifier}}/#{slug}\","
+          else
+            lines << "        post \"/api/#{slug}\","
+          end
+
+          lines << "          params: { #{forbidden.first}: 'forbidden_value' },"
+          lines << "          headers: auth_headers(user)"
+          lines << ""
+          lines << "        expect(response).to have_http_status(:forbidden)"
+          lines << "      end"
+          lines.join("\n")
+        end
+
+        def wrap_multi_tenant(model, slug, role_contexts, org_identifier)
           <<~RUBY
             # frozen_string_literal: true
 
@@ -236,17 +233,15 @@ module Lumina
               end
 
               def auth_headers(user)
-                { 'Authorization' => "Bearer \#{user.auth_token}" }
+                { 'Authorization' => "Bearer \#{user.api_token}" }
               end
 
-            #{crud_tests}
-            #{visibility_tests}
-            #{forbidden_tests}
+            #{role_contexts}
             end
           RUBY
         end
 
-        def wrap_non_tenant(model, slug, crud_tests, visibility_tests, forbidden_tests)
+        def wrap_non_tenant(model, slug, role_contexts)
           <<~RUBY
             # frozen_string_literal: true
 
@@ -258,12 +253,10 @@ module Lumina
               end
 
               def auth_headers(user)
-                { 'Authorization' => "Bearer \#{user.auth_token}" }
+                { 'Authorization' => "Bearer \#{user.api_token}" }
               end
 
-            #{crud_tests}
-            #{visibility_tests}
-            #{forbidden_tests}
+            #{role_contexts}
             end
           RUBY
         end

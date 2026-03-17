@@ -254,32 +254,29 @@ module Lumina
         content += "  include Lumina::HasAuditTrail\n" if audit_trail
 
         # Relationships
-        content += "\n  # ---------------------------------------------------------------\n"
-        content += "  # Relationships\n"
-        content += "  # ---------------------------------------------------------------\n\n"
+        fk_columns = columns.select { |c| c[:type] == "foreignId" && c[:foreign_model] }
+        has_relationships = fk_columns.any? { |col| !(belongs_to_org && col[:foreign_model] == "Organization") }
 
-        columns.select { |c| c[:type] == "foreignId" && c[:foreign_model] }.each do |col|
-          relation_name = col[:name].sub(/_id\z/, "")
-          next if belongs_to_org && col[:foreign_model] == "Organization"
+        if has_relationships
+          content += "\n"
+          fk_columns.each do |col|
+            relation_name = col[:name].sub(/_id\z/, "")
+            next if belongs_to_org && col[:foreign_model] == "Organization"
 
-          opts = "class_name: '#{col[:foreign_model]}'"
-          opts += ", optional: true" if col[:nullable]
-          content += "  belongs_to :#{relation_name}, #{opts}\n"
+            opts = "class_name: '#{col[:foreign_model]}'"
+            opts += ", optional: true" if col[:nullable]
+            content += "  belongs_to :#{relation_name}, #{opts}\n"
+          end
         end
 
-        content += "\n  # ---------------------------------------------------------------\n"
-        content += "  # Query Builder configuration\n"
-        content += "  # ---------------------------------------------------------------\n\n"
-
+        # Query Builder configuration
+        content += "\n"
         content += "  lumina_filters #{filter_cols.map { |c| ":#{c}" }.join(', ')}\n" unless filter_cols.empty?
         content += "  lumina_sorts #{sort_cols.map { |c| ":#{c}" }.join(', ')}\n" unless sort_cols.empty?
         content += "  lumina_fields #{field_cols.map { |c| ":#{c}" }.join(', ')}\n" unless field_cols.empty?
         content += "  lumina_includes #{include_cols.map { |c| ":#{c}" }.join(', ')}\n" unless include_cols.empty?
 
         # Validations
-        content += "\n  # ---------------------------------------------------------------\n"
-        content += "  # Validation\n"
-        content += "  # ---------------------------------------------------------------\n\n"
 
         columns.each do |col|
           validations = column_to_validations(col, table_name)
