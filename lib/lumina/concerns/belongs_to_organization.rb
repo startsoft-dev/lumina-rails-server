@@ -32,7 +32,7 @@ module Lumina
 
     class_methods do
       def for_organization(organization)
-        unscoped.where(organization_id: organization.id)
+        where(organization_id: organization.id)
       end
     end
 
