@@ -242,7 +242,8 @@ RSpec.describe Lumina::Commands::BlueprintCommand do
 
       content = File.read(full_path)
       expect(content).to include("class ArticleScope")
-      expect(content).to include("ModelScopes")
+      expect(content).to include("Scopes")
+      expect(content).to include("Lumina::ResourceScope")
     end
   end
 

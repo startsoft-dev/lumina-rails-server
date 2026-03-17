@@ -37,6 +37,7 @@ require "lumina/concerns/belongs_to_organization"
 require "lumina/concerns/hidable_columns"
 require "lumina/concerns/has_uuid"
 require "lumina/concerns/has_auto_scope"
+require "lumina/resource_scope"
 require "lumina/policies/resource_policy"
 require "lumina/policies/invitation_policy"
 require "lumina/models/audit_log"
@@ -270,8 +271,13 @@ RSpec.configure do |config|
   config.shared_context_metadata_behavior = :apply_to_host_groups
   config.order = :random
 
-  # Reset Lumina configuration between tests
+  # Reset Lumina configuration and RequestStore between tests
   config.before(:each) do
+    if defined?(RequestStore)
+      RequestStore.store[:lumina_current_user] = nil
+      RequestStore.store[:lumina_organization] = nil
+    end
+
     Lumina.reset_configuration!
     Lumina.configure do |c|
       c.model :posts, "Post"

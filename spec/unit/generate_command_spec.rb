@@ -334,7 +334,8 @@ RSpec.describe Lumina::Commands::GenerateCommand do
 
       content = File.read(path)
       expect(content).to include("class ArticleScope")
-      expect(content).to include("def self.apply")
+      expect(content).to include("Lumina::ResourceScope")
+      expect(content).to include("def apply")
     end
   end
 

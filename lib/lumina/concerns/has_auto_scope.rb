@@ -7,22 +7,33 @@ module Lumina
   # Looks for a scope class at `Scopes::{ModelName}Scope`
   # (e.g., `Scopes::PostScope` for `Post` model).
   #
-  # The scope class must implement `self.apply(relation)` which receives
-  # the current ActiveRecord relation and returns a modified relation.
+  # The scope class can either:
   #
-  # Usage:
-  #   class Post < ApplicationRecord
-  #     include Lumina::HasAutoScope
-  #   end
+  # 1. Extend +Lumina::ResourceScope+ (recommended) — provides access to
+  #    +user+, +organization+, and +role+ inside the +apply+ instance method:
   #
-  #   # app/models/scopes/post_scope.rb
   #   module Scopes
-  #     class PostScope
-  #       def self.apply(scope)
-  #         scope.where(active: true)
+  #     class PostScope < Lumina::ResourceScope
+  #       def apply(relation)
+  #         if role == "viewer"
+  #           relation.where(published: true)
+  #         else
+  #           relation
+  #         end
   #       end
   #     end
   #   end
+  #
+  # 2. Implement +self.apply(relation)+ as a class method (legacy/simple):
+  #
+  #   module Scopes
+  #     class PostScope
+  #       def self.apply(relation)
+  #         relation.where(active: true)
+  #       end
+  #     end
+  #   end
+  #
   module HasAutoScope
     extend ActiveSupport::Concern
 
@@ -31,7 +42,11 @@ module Lumina
         model = is_a?(ActiveRecord::Relation) ? self.klass : self
         if model.respond_to?(:lumina_auto_scope_class)
           scope_class = model.lumina_auto_scope_class
-          scope_class ? scope_class.apply(where(nil)) : where(nil)
+          if scope_class
+            model.apply_lumina_scope(scope_class, where(nil))
+          else
+            where(nil)
+          end
         else
           where(nil)
         end
@@ -47,6 +62,19 @@ module Lumina
         # when the scope class hasn't been autoloaded yet (Zeitwerk)
         @lumina_auto_scope_class = result if result
         result
+      end
+
+      # Apply the scope class to a relation.
+      # Supports both ResourceScope subclasses (instance method) and
+      # plain classes with self.apply (class method).
+      def apply_lumina_scope(scope_class, relation)
+        if scope_class < Lumina::ResourceScope
+          scope_class.new.apply(relation)
+        elsif scope_class.respond_to?(:apply)
+          scope_class.apply(relation)
+        else
+          relation
+        end
       end
 
       private

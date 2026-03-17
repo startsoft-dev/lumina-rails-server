@@ -38,8 +38,8 @@ RSpec.describe Lumina::BelongsToOrganization do
         RequestStore.store[:lumina_organization] = org
         begin
           scoped = OrgPost.all
-          # The default scope should filter by org
-          expect(scoped.where_clause.to_s).to include("organization_id")
+          # The default scope should filter by org — check the generated SQL
+          expect(scoped.to_sql).to include("organization_id")
         ensure
           RequestStore.store.delete(:lumina_organization)
         end
@@ -81,14 +81,13 @@ RSpec.describe Lumina::BelongsToOrganization do
       expect(post.organization_id).to eq(org1.id)
     end
 
-    it "does nothing when RequestStore is not loaded" do
-      post = OrgPost.new(title: "Test")
-
-      # If RequestStore is defined but has no org, should not error
+    it "does nothing when RequestStore has no organization" do
+      # Ensure RequestStore has no org set
       if defined?(RequestStore)
-        RequestStore.store.delete(:lumina_organization)
+        RequestStore.store[:lumina_organization] = nil
       end
 
+      post = OrgPost.new(title: "Test")
       post.send(:set_organization_from_context)
       expect(post.organization_id).to be_nil
     end

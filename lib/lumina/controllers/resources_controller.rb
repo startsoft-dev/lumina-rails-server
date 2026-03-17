@@ -295,11 +295,16 @@ module Lumina
         user_class = "User".safe_constantize
         return nil unless user_class
 
-        if user_class.respond_to?(:find_by_api_token)
+        user = if user_class.respond_to?(:find_by_api_token)
           user_class.find_by_api_token(token)
         elsif user_class.column_names.include?("api_token")
           user_class.find_by(api_token: token)
         end
+
+        # Store in RequestStore so scopes and concerns can access it
+        RequestStore.store[:lumina_current_user] = user if defined?(RequestStore) && user
+
+        user
       end
     end
 

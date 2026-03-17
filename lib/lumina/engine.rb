@@ -13,6 +13,9 @@ module Lumina
     end
 
     initializer "lumina.autoloads" do
+      # Base classes
+      require "lumina/resource_scope"
+
       # Concerns
       require "lumina/concerns/has_lumina"
       require "lumina/concerns/has_validation"

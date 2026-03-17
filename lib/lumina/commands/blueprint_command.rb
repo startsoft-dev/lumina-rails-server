@@ -356,10 +356,12 @@ module Lumina
         content = <<~RUBY
           # frozen_string_literal: true
 
-          module ModelScopes
-            class #{name}Scope
+          module Scopes
+            class #{name}Scope < Lumina::ResourceScope
               # Custom query scope for #{name}.
               # Applied automatically to all #{name} queries via HasAutoScope.
+              #
+              # Available methods: user, organization, role
               #
               # def apply(relation)
               #   relation.where(active: true)

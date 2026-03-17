@@ -1,23 +1,31 @@
 # frozen_string_literal: true
 
-module ModelScopes
-  class <%= name %>Scope
-    # Apply custom scopes to the <%= table_name %> query.
+module Scopes
+  class <%= name %>Scope < Lumina::ResourceScope
+    # Custom query scope for <%= name %>.
+    # Applied automatically to all <%= name %> queries via HasAutoScope.
     #
-    # This scope is auto-detected by Lumina::HasAutoScope when included.
-    # It will be applied to all queries for this model.
+    # Available methods:
+    #   - user          — the current authenticated user (or nil)
+    #   - organization  — the current organization (or nil)
+    #   - role          — the user's role slug in the current org (or nil)
     #
-    # @param scope [ActiveRecord::Relation] the current query scope
-    # @param params [Hash] the request parameters
+    # @param relation [ActiveRecord::Relation] the current query scope
     # @return [ActiveRecord::Relation] the modified scope
-    def self.apply(scope, params = {})
+    def apply(relation)
       # Uncomment and customize your filter logic:
       #
-      # if params[:status].present?
-      #   scope = scope.where(status: params[:status])
+      # Example: role-based filtering
+      # if role == "viewer"
+      #   relation = relation.where(status: "active")
+      # end
+      #
+      # Example: user-scoped records
+      # if user
+      #   relation = relation.where(user_id: user.id)
       # end
 
-      scope
+      relation
     end
   end
 end
