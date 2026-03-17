@@ -22,7 +22,8 @@ module Lumina
       end
 
       def perform
-        Rails.application.eager_load! if defined?(Rails) && Rails.application
+        # Ensure ApplicationRecord is loaded before model classes that inherit from it
+        "ApplicationRecord".safe_constantize if defined?(Rails)
 
         output_path = options[:output]
         base_url = options[:base_url].chomp("/")
