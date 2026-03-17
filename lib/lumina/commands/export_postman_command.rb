@@ -22,6 +22,8 @@ module Lumina
       end
 
       def perform
+        Rails.application.eager_load! if defined?(Rails) && Rails.application
+
         output_path = options[:output]
         base_url = options[:base_url].chomp("/")
         project_name = options[:project_name] || Rails.application.class.module_parent_name rescue "API"
