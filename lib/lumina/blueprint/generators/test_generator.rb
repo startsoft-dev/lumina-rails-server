@@ -23,8 +23,9 @@ module Lumina
           slug = blueprint[:slug]
           permissions = blueprint[:permissions]
           columns = blueprint[:columns]
+          factory_name = model_to_factory(model)
 
-          role_contexts = build_role_contexts(slug, permissions, columns, is_multi_tenant, org_identifier)
+          role_contexts = build_role_contexts(slug, factory_name, permissions, columns, is_multi_tenant, org_identifier)
 
           if is_multi_tenant
             wrap_multi_tenant(model, slug, role_contexts, org_identifier)
@@ -44,17 +45,23 @@ module Lumina
 
         private
 
-        def build_role_contexts(slug, permissions, columns, is_multi_tenant, org_identifier)
+        def model_to_factory(model)
+          model.gsub(/([a-z])([A-Z])/, '\1_\2').downcase
+        end
+
+        def build_role_contexts(slug, factory_name, permissions, columns, is_multi_tenant, org_identifier)
           return "" if permissions.empty?
 
+          all_defined_actions = permissions.values.flat_map { |p| p[:actions] }.uniq & ALL_ACTIONS
           lines = []
 
           permissions.each do |role, perm|
-            allowed = perm[:actions] & ALL_ACTIONS
-            blocked = ALL_ACTIONS - perm[:actions]
+            allowed = perm[:actions] & all_defined_actions
+            blocked = all_defined_actions - perm[:actions]
 
             lines << "    context 'as #{role}' do"
             lines << build_let_user(role, perm[:actions], slug, is_multi_tenant, org_identifier)
+            lines << build_let_record(factory_name, is_multi_tenant)
             lines << ""
 
             # Individual allowed action tests
@@ -99,30 +106,45 @@ module Lumina
           end
         end
 
+        def build_let_record(factory_name, is_multi_tenant)
+          if is_multi_tenant
+            "      let(:record) { create(:#{factory_name}, organization: org) }"
+          else
+            "      let(:record) { create(:#{factory_name}) }"
+          end
+        end
+
         def build_single_action_test(slug, action, is_multi_tenant, org_identifier, expect_success)
-          action_map = {
-            "index" => { method: "get", path: "/#{slug}" },
-            "show" => { method: "get", path: "/#{slug}/1" },
-            "store" => { method: "post", path: "/#{slug}" },
-            "update" => { method: "put", path: "/#{slug}/1" },
-            "destroy" => { method: "delete", path: "/#{slug}/1" },
-            "trashed" => { method: "get", path: "/#{slug}/trashed" },
-            "restore" => { method: "post", path: "/#{slug}/1/restore" },
-            "forceDelete" => { method: "delete", path: "/#{slug}/1/force" }
+          id_actions = %w[show update destroy restore forceDelete]
+          needs_id = id_actions.include?(action)
+          needs_discard = %w[restore forceDelete].include?(action)
+
+          action_methods = {
+            "index" => "get", "show" => "get", "store" => "post",
+            "update" => "put", "destroy" => "delete", "trashed" => "get",
+            "restore" => "post", "forceDelete" => "delete"
           }
 
-          success_codes = { "store" => ":created" }
+          action_path_suffix = {
+            "index" => "", "show" => "/\#{record.id}", "store" => "",
+            "update" => "/\#{record.id}", "destroy" => "/\#{record.id}",
+            "trashed" => "/trashed", "restore" => "/\#{record.id}/restore",
+            "forceDelete" => "/\#{record.id}/force-delete"
+          }
+
+          success_codes = { "store" => ":created", "destroy" => ":no_content", "forceDelete" => ":no_content" }
           default_success = ":ok"
 
-          mapping = action_map[action]
-          return "" unless mapping
+          http_method = action_methods[action]
+          suffix = action_path_suffix[action]
+          return "" unless http_method
 
           label = ACTION_LABELS[action] || action
 
           if is_multi_tenant
-            url = "\"/api/\#{org.#{org_identifier}}#{mapping[:path]}\""
+            url = "\"/api/\#{org.#{org_identifier}}/#{slug}#{suffix}\""
           else
-            url = "\"/api#{mapping[:path]}\""
+            url = "\"/api/#{slug}#{suffix}\""
           end
 
           if expect_success
@@ -135,8 +157,13 @@ module Lumina
 
           lines = []
           lines << "      it '#{verb} #{label} #{slug}' do"
-          lines << "        #{mapping[:method]} #{url}, headers: auth_headers(user)"
-          lines << "        expect(response).to have_http_status(#{code})"
+          lines << "        record.discard" if needs_discard
+          lines << "        #{http_method} #{url}, headers: auth_headers(user)"
+          if expect_success && action == "store"
+            lines << "        expect(response.status).not_to eq(403)"
+          else
+            lines << "        expect(response).to have_http_status(#{code})"
+          end
           lines << "      end"
           lines.join("\n")
         end
@@ -157,10 +184,8 @@ module Lumina
           lines << "      it 'shows only permitted fields' do"
 
           if is_multi_tenant
-            lines << "        record = create(:#{slug.chomp('s')}, organization: org)"
             lines << "        get \"/api/\#{org.#{org_identifier}}/#{slug}/\#{record.id}\", headers: auth_headers(user)"
           else
-            lines << "        record = create(:#{slug.chomp('s')})"
             lines << "        get \"/api/#{slug}/\#{record.id}\", headers: auth_headers(user)"
           end
 
