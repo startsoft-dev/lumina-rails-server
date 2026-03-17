@@ -3,6 +3,14 @@
 require "spec_helper"
 
 # Define scope classes before models reference them
+module Scopes
+  class ScopedArticleScope
+    def self.apply(relation)
+      relation.where(status: "published")
+    end
+  end
+end
+
 module ModelScopes
   class ScopedPostScope
     def self.apply(relation)
@@ -15,6 +23,12 @@ RSpec.describe Lumina::HasAutoScope do
   before(:all) do
     ActiveRecord::Schema.define do
       create_table :scoped_posts, force: true do |t|
+        t.string :title
+        t.string :status
+        t.timestamps
+      end
+
+      create_table :scoped_articles, force: true do |t|
         t.string :title
         t.string :status
         t.timestamps
@@ -36,6 +50,15 @@ RSpec.describe Lumina::HasAutoScope do
     end
   end
 
+  let!(:scoped_article_class) do
+    Class.new(ActiveRecord::Base) do
+      self.table_name = "scoped_articles"
+      def self.name; "ScopedArticle"; end
+
+      include Lumina::HasAutoScope
+    end
+  end
+
   let!(:unscoped_item_class) do
     Class.new(ActiveRecord::Base) do
       self.table_name = "unscoped_items"
@@ -46,7 +69,11 @@ RSpec.describe Lumina::HasAutoScope do
   end
 
   describe ".lumina_auto_scope_class" do
-    it "finds scope class by naming convention" do
+    it "finds scope class via Scopes:: convention" do
+      expect(scoped_article_class.lumina_auto_scope_class).to eq(Scopes::ScopedArticleScope)
+    end
+
+    it "finds scope class via ModelScopes:: convention (fallback)" do
       expect(scoped_post_class.lumina_auto_scope_class).to eq(ModelScopes::ScopedPostScope)
     end
 
@@ -56,7 +83,16 @@ RSpec.describe Lumina::HasAutoScope do
   end
 
   describe "default_scope" do
-    it "applies scope when scope class exists" do
+    it "applies scope when scope class exists (Scopes:: convention)" do
+      scoped_article_class.create!(title: "Draft Article", status: "draft")
+      scoped_article_class.create!(title: "Published Article", status: "published")
+
+      results = scoped_article_class.all.to_a
+      expect(results.size).to eq(1)
+      expect(results.first.title).to eq("Published Article")
+    end
+
+    it "applies scope when scope class exists (ModelScopes:: convention)" do
       scoped_post_class.create!(title: "Draft Post", status: "draft")
       scoped_post_class.create!(title: "Published Post", status: "published")
 

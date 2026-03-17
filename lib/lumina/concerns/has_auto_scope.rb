@@ -4,8 +4,8 @@ module Lumina
   # Auto-detect and apply global scopes by convention.
   # Mirrors the Laravel HasAutoScope trait.
   #
-  # Looks for a scope class at `ModelScopes::{ModelName}Scope`
-  # (e.g., `ModelScopes::PostScope` for `Post` model).
+  # Looks for a scope class at `Scopes::{ModelName}Scope`
+  # (e.g., `Scopes::PostScope` for `Post` model).
   #
   # The scope class must implement `self.apply(relation)` which receives
   # the current ActiveRecord relation and returns a modified relation.
@@ -16,7 +16,7 @@ module Lumina
   #   end
   #
   #   # app/models/scopes/post_scope.rb
-  #   module ModelScopes
+  #   module Scopes
   #     class PostScope
   #       def self.apply(scope)
   #         scope.where(active: true)
@@ -51,8 +51,8 @@ module Lumina
         return nil if name.nil?
 
         model_name = name.demodulize
-        scope_name = "ModelScopes::#{model_name}Scope"
-        scope_name.safe_constantize
+        "Scopes::#{model_name}Scope".safe_constantize ||
+          "ModelScopes::#{model_name}Scope".safe_constantize
       end
     end
   end
