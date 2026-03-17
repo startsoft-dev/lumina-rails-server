@@ -20,6 +20,29 @@ RSpec.describe Lumina::Commands::ExportPostmanCommand do
     FileUtils.remove_entry(tmp_dir)
   end
 
+  # Helper: run the command with a given config and return parsed JSON
+  def run_export_with_config(models:, route_groups:, project_name: "TestAPI")
+    Lumina.reset_configuration!
+    Lumina.configure do |c|
+      models.each { |slug, klass_name| c.model slug, klass_name }
+      route_groups.each do |name, cfg|
+        c.route_group name, prefix: cfg[:prefix] || "", middleware: cfg[:middleware] || [], models: cfg[:models] || :all
+      end
+    end
+
+    output_path = File.join(tmp_dir, "collection_#{SecureRandom.hex(4)}.json")
+    command.options = {
+      output: output_path,
+      base_url: "http://localhost:3000/api",
+      project_name: project_name
+    }
+
+    command.perform
+
+    expect(File.exist?(output_path)).to be true
+    JSON.parse(File.read(output_path))
+  end
+
   # ------------------------------------------------------------------
   # build_collection_variables
   # ------------------------------------------------------------------
@@ -38,6 +61,65 @@ RSpec.describe Lumina::Commands::ExportPostmanCommand do
 
       expect(vars.length).to eq(4)
       expect(vars.map { |v| v[:key] }).to include("organization")
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # any_group_has_org_prefix?
+  # ------------------------------------------------------------------
+
+  describe "#any_group_has_org_prefix?" do
+    it "returns true when a group has a parameterized prefix" do
+      groups = { tenant: { prefix: ":organization" }, public: { prefix: "" } }
+      expect(command.send(:any_group_has_org_prefix?, groups)).to be true
+    end
+
+    it "returns false when no group has a parameterized prefix" do
+      groups = { admin: { prefix: "admin" }, public: { prefix: "" } }
+      expect(command.send(:any_group_has_org_prefix?, groups)).to be false
+    end
+
+    it "returns false for empty groups" do
+      expect(command.send(:any_group_has_org_prefix?, {})).to be false
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # prefix_has_param?
+  # ------------------------------------------------------------------
+
+  describe "#prefix_has_param?" do
+    it "returns true for prefix with colon param" do
+      expect(command.send(:prefix_has_param?, ":organization")).to be true
+    end
+
+    it "returns false for literal prefix" do
+      expect(command.send(:prefix_has_param?, "admin")).to be false
+    end
+
+    it "returns false for empty prefix" do
+      expect(command.send(:prefix_has_param?, "")).to be false
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # base_path
+  # ------------------------------------------------------------------
+
+  describe "#base_path" do
+    it "returns URL without prefix when prefix is empty" do
+      result = command.send(:base_path, :posts, "")
+      expect(result).to eq("{{baseUrl}}/posts")
+    end
+
+    it "converts :param to {{param}} in prefix" do
+      result = command.send(:base_path, :posts, ":organization")
+      expect(result).to eq("{{baseUrl}}/{{organization}}/posts")
+    end
+
+    it "uses literal prefix as-is" do
+      result = command.send(:base_path, :posts, "admin")
+      expect(result).to eq("{{baseUrl}}/admin/posts")
     end
   end
 
@@ -74,40 +156,6 @@ RSpec.describe Lumina::Commands::ExportPostmanCommand do
       expect(login_item[:request][:method]).to eq("POST")
       expect(login_item[:request][:body]).not_to be_nil
       expect(login_item[:request][:body][:mode]).to eq("raw")
-    end
-  end
-
-  # ------------------------------------------------------------------
-  # build_invitation_folder
-  # ------------------------------------------------------------------
-
-  describe "#build_invitation_folder" do
-    it "uses direct base URL without org prefix" do
-      folder = command.send(:build_invitation_folder, false)
-
-      expect(folder[:name]).to eq("Invitations")
-      list_item = folder[:item].find { |i| i[:name] == "List invitations" }
-      raw_url = list_item[:request][:url][:raw]
-      expect(raw_url).to include("{{baseUrl}}/invitations")
-      expect(raw_url).not_to include("{{organization}}")
-    end
-
-    it "includes organization prefix when needed" do
-      folder = command.send(:build_invitation_folder, true)
-
-      list_item = folder[:item].find { |i| i[:name] == "List invitations" }
-      raw_url = list_item[:request][:url][:raw]
-      expect(raw_url).to include("{{organization}}")
-    end
-
-    it "includes 5 invitation endpoints" do
-      folder = command.send(:build_invitation_folder, false)
-      expect(folder[:item].length).to eq(5)
-
-      names = folder[:item].map { |i| i[:name] }
-      expect(names).to include("List invitations", "List pending",
-                                "Create invitation", "Resend invitation",
-                                "Cancel invitation")
     end
   end
 
@@ -183,6 +231,14 @@ RSpec.describe Lumina::Commands::ExportPostmanCommand do
       list_item = index_folder[:item].first
 
       expect(list_item[:request][:url][:raw]).to include("{{organization}}")
+    end
+
+    it "uses literal prefix in URLs" do
+      folders = command.send(:build_action_folders, :posts, meta, "admin")
+      index_folder = folders.find { |f| f[:name] == "Index" }
+      list_item = index_folder[:item].first
+
+      expect(list_item[:request][:url][:raw]).to include("{{baseUrl}}/admin/posts")
     end
   end
 
@@ -286,37 +342,408 @@ RSpec.describe Lumina::Commands::ExportPostmanCommand do
     end
   end
 
-  # ------------------------------------------------------------------
-  # Full collection generation
-  # ------------------------------------------------------------------
+  # ==================================================================
+  # Full collection generation — Single group: non-tenant (no prefix)
+  # ==================================================================
 
-  describe "#perform (full collection)" do
+  describe "single group: non-tenant (default, no prefix)" do
     it "generates a valid Postman collection JSON file" do
-      Lumina.configure do |c|
-        c.model :posts, "Post"
-        c.model :blogs, "Blog"
-      end
+      json = run_export_with_config(
+        models: { posts: "Post", blogs: "Blog" },
+        route_groups: { default: { prefix: "", models: :all } }
+      )
 
-      output_path = File.join(tmp_dir, "collection.json")
-      allow(command).to receive(:options).and_return({
-        output: output_path,
-        base_url: "http://localhost:3000/api",
-        project_name: "TestAPI"
-      })
+      expect(json["info"]["name"]).to eq("TestAPI")
+      expect(json["info"]["schema"]).to include("postman.com")
+      expect(json["variable"]).to be_an(Array)
+      expect(json["item"]).to be_an(Array)
+    end
 
-      command.perform
+    it "has flat structure with Authentication and model folders at top level" do
+      json = run_export_with_config(
+        models: { posts: "Post", blogs: "Blog" },
+        route_groups: { default: { prefix: "", models: :all } }
+      )
 
-      expect(File.exist?(output_path)).to be true
-
-      collection = JSON.parse(File.read(output_path))
-      expect(collection["info"]["name"]).to eq("TestAPI")
-      expect(collection["info"]["schema"]).to include("postman.com")
-      expect(collection["variable"]).to be_an(Array)
-      expect(collection["item"]).to be_an(Array)
-
-      # Should have Authentication folder + model folders
-      item_names = collection["item"].map { |i| i["name"] }
+      item_names = json["item"].map { |i| i["name"] }
       expect(item_names).to include("Authentication", "posts", "blogs")
+      expect(item_names).not_to include("default")
+    end
+
+    it "URLs have no prefix" do
+      json = run_export_with_config(
+        models: { posts: "Post" },
+        route_groups: { default: { prefix: "", models: :all } }
+      )
+
+      posts_folder = json["item"].find { |i| i["name"] == "posts" }
+      index_folder = posts_folder["item"].find { |i| i["name"] == "Index" }
+      raw_url = index_folder["item"][0]["request"]["url"]["raw"]
+      expect(raw_url).to include("{{baseUrl}}/posts")
+      expect(raw_url).not_to include("{{organization}}")
+    end
+
+    it "omits organization variable" do
+      json = run_export_with_config(
+        models: { posts: "Post" },
+        route_groups: { default: { prefix: "", models: :all } }
+      )
+
+      var_keys = json["variable"].map { |v| v["key"] }
+      expect(var_keys).not_to include("organization")
+    end
+
+    it "Authentication folder is first" do
+      json = run_export_with_config(
+        models: { posts: "Post" },
+        route_groups: { default: { prefix: "", models: :all } }
+      )
+
+      expect(json["item"][0]["name"]).to eq("Authentication")
+    end
+
+    it "model folder has action folders directly" do
+      json = run_export_with_config(
+        models: { posts: "Post" },
+        route_groups: { default: { prefix: "", models: :all } }
+      )
+
+      posts_folder = json["item"].find { |i| i["name"] == "posts" }
+      action_names = posts_folder["item"].map { |i| i["name"] }
+      expect(action_names).to include("Index", "Show", "Store", "Update", "Destroy")
+    end
+
+    it "all requests have bearer token header" do
+      json = run_export_with_config(
+        models: { posts: "Post" },
+        route_groups: { default: { prefix: "", models: :all } }
+      )
+
+      posts_folder = json["item"].find { |i| i["name"] == "posts" }
+      index_folder = posts_folder["item"].find { |i| i["name"] == "Index" }
+      list_all_request = index_folder["item"][0]["request"]
+      auth_header = list_all_request["header"].find { |h| h["key"] == "Authorization" }
+      expect(auth_header).not_to be_nil
+      expect(auth_header["value"]).to eq("Bearer {{token}}")
+    end
+  end
+
+  # ==================================================================
+  # Full collection generation — Single group: tenant (with :organization prefix)
+  # ==================================================================
+
+  describe "single group: tenant (with :organization prefix)" do
+    it "has flat structure (no group-level folder)" do
+      json = run_export_with_config(
+        models: { posts: "Post" },
+        route_groups: { tenant: { prefix: ":organization", models: :all } }
+      )
+
+      item_names = json["item"].map { |i| i["name"] }
+      expect(item_names).to include("Authentication", "posts")
+      expect(item_names).not_to include("tenant")
+    end
+
+    it "URLs have organization prefix" do
+      json = run_export_with_config(
+        models: { posts: "Post" },
+        route_groups: { tenant: { prefix: ":organization", models: :all } }
+      )
+
+      posts_folder = json["item"].find { |i| i["name"] == "posts" }
+      index_folder = posts_folder["item"].find { |i| i["name"] == "Index" }
+      raw_url = index_folder["item"][0]["request"]["url"]["raw"]
+      expect(raw_url).to include("{{baseUrl}}/{{organization}}/posts")
+    end
+
+    it "includes organization variable" do
+      json = run_export_with_config(
+        models: { posts: "Post" },
+        route_groups: { tenant: { prefix: ":organization", models: :all } }
+      )
+
+      var_keys = json["variable"].map { |v| v["key"] }
+      expect(var_keys).to include("organization")
+    end
+  end
+
+  # ==================================================================
+  # Full collection generation — Single group: literal prefix (e.g. admin)
+  # ==================================================================
+
+  describe "single group: literal prefix" do
+    it "has flat structure" do
+      json = run_export_with_config(
+        models: { posts: "Post" },
+        route_groups: { admin: { prefix: "admin", models: :all } }
+      )
+
+      item_names = json["item"].map { |i| i["name"] }
+      expect(item_names).to include("posts")
+      expect(item_names).not_to include("admin")
+    end
+
+    it "URLs use literal prefix" do
+      json = run_export_with_config(
+        models: { posts: "Post" },
+        route_groups: { admin: { prefix: "admin", models: :all } }
+      )
+
+      posts_folder = json["item"].find { |i| i["name"] == "posts" }
+      index_folder = posts_folder["item"].find { |i| i["name"] == "Index" }
+      raw_url = index_folder["item"][0]["request"]["url"]["raw"]
+      expect(raw_url).to include("{{baseUrl}}/admin/posts")
+    end
+
+    it "omits organization variable" do
+      json = run_export_with_config(
+        models: { posts: "Post" },
+        route_groups: { admin: { prefix: "admin", models: :all } }
+      )
+
+      var_keys = json["variable"].map { |v| v["key"] }
+      expect(var_keys).not_to include("organization")
+    end
+  end
+
+  # ==================================================================
+  # Full collection generation — Multiple groups: tenant + public
+  # ==================================================================
+
+  describe "multiple groups: tenant + public" do
+    let(:json) do
+      run_export_with_config(
+        models: { posts: "Post", blogs: "Blog" },
+        route_groups: {
+          tenant: { prefix: ":organization", models: :all },
+          public: { prefix: "public", models: [:blogs] }
+        }
+      )
+    end
+
+    it "creates group-level folders" do
+      item_names = json["item"].map { |i| i["name"] }
+      expect(item_names).to include("Authentication", "tenant", "public")
+      expect(item_names).not_to include("posts")
+      expect(item_names).not_to include("blogs")
+    end
+
+    it "tenant folder contains all models" do
+      tenant_folder = json["item"].find { |i| i["name"] == "tenant" }
+      model_names = tenant_folder["item"].map { |i| i["name"] }
+      expect(model_names).to include("posts", "blogs")
+    end
+
+    it "public folder contains only specified models" do
+      public_folder = json["item"].find { |i| i["name"] == "public" }
+      model_names = public_folder["item"].map { |i| i["name"] }
+      expect(model_names).to include("blogs")
+      expect(model_names).not_to include("posts")
+    end
+
+    it "tenant URLs have organization prefix" do
+      tenant_folder = json["item"].find { |i| i["name"] == "tenant" }
+      posts_folder = tenant_folder["item"].find { |i| i["name"] == "posts" }
+      index_folder = posts_folder["item"].find { |i| i["name"] == "Index" }
+      raw_url = index_folder["item"][0]["request"]["url"]["raw"]
+      expect(raw_url).to include("{{baseUrl}}/{{organization}}/posts")
+    end
+
+    it "public URLs have public prefix" do
+      public_folder = json["item"].find { |i| i["name"] == "public" }
+      blogs_folder = public_folder["item"].find { |i| i["name"] == "blogs" }
+      index_folder = blogs_folder["item"].find { |i| i["name"] == "Index" }
+      raw_url = index_folder["item"][0]["request"]["url"]["raw"]
+      expect(raw_url).to include("{{baseUrl}}/public/blogs")
+    end
+
+    it "includes organization variable when any group has param prefix" do
+      var_keys = json["variable"].map { |v| v["key"] }
+      expect(var_keys).to include("organization")
+    end
+
+    it "Authentication folder is first" do
+      expect(json["item"][0]["name"]).to eq("Authentication")
+    end
+
+    it "model actions are nested under group then model" do
+      tenant_folder = json["item"].find { |i| i["name"] == "tenant" }
+      posts_folder = tenant_folder["item"].find { |i| i["name"] == "posts" }
+      action_names = posts_folder["item"].map { |i| i["name"] }
+      expect(action_names).to include("Index", "Show", "Store", "Update", "Destroy")
+    end
+
+    it "soft delete actions appear for models that use soft deletes" do
+      tenant_folder = json["item"].find { |i| i["name"] == "tenant" }
+      posts_folder = tenant_folder["item"].find { |i| i["name"] == "posts" }
+      action_names = posts_folder["item"].map { |i| i["name"] }
+      # Post includes Discard::Model
+      expect(action_names).to include("Trashed", "Restore", "Force Delete")
+    end
+  end
+
+  # ==================================================================
+  # Full collection generation — Multiple groups: no tenant (admin + public)
+  # ==================================================================
+
+  describe "multiple groups: no tenant (admin + public)" do
+    let(:json) do
+      run_export_with_config(
+        models: { posts: "Post", blogs: "Blog" },
+        route_groups: {
+          admin: { prefix: "admin", models: :all },
+          public: { prefix: "", models: [:blogs] }
+        }
+      )
+    end
+
+    it "creates group-level folders" do
+      item_names = json["item"].map { |i| i["name"] }
+      expect(item_names).to include("admin", "public")
+    end
+
+    it "omits organization variable" do
+      var_keys = json["variable"].map { |v| v["key"] }
+      expect(var_keys).not_to include("organization")
+    end
+
+    it "admin group URLs have admin prefix" do
+      admin_folder = json["item"].find { |i| i["name"] == "admin" }
+      posts_folder = admin_folder["item"].find { |i| i["name"] == "posts" }
+      index_folder = posts_folder["item"].find { |i| i["name"] == "Index" }
+      raw_url = index_folder["item"][0]["request"]["url"]["raw"]
+      expect(raw_url).to include("{{baseUrl}}/admin/posts")
+    end
+
+    it "public group with empty prefix has no prefix in URLs" do
+      public_folder = json["item"].find { |i| i["name"] == "public" }
+      blogs_folder = public_folder["item"].find { |i| i["name"] == "blogs" }
+      index_folder = blogs_folder["item"].find { |i| i["name"] == "Index" }
+      raw_url = index_folder["item"][0]["request"]["url"]["raw"]
+      expect(raw_url).to include("{{baseUrl}}/blogs")
+      expect(raw_url).not_to include("admin")
+    end
+  end
+
+  # ==================================================================
+  # Full collection generation — Three groups
+  # ==================================================================
+
+  describe "three groups" do
+    let(:json) do
+      run_export_with_config(
+        models: { posts: "Post", blogs: "Blog" },
+        route_groups: {
+          tenant: { prefix: ":organization", models: :all },
+          admin: { prefix: "admin", models: [:posts] },
+          public: { prefix: "", models: [:blogs] }
+        }
+      )
+    end
+
+    it "all three groups appear as folders" do
+      item_names = json["item"].map { |i| i["name"] }
+      expect(item_names).to include("Authentication", "tenant", "admin", "public")
+    end
+
+    it "each group has correct models" do
+      tenant_folder = json["item"].find { |i| i["name"] == "tenant" }
+      tenant_models = tenant_folder["item"].map { |i| i["name"] }
+      expect(tenant_models).to include("posts", "blogs")
+
+      admin_folder = json["item"].find { |i| i["name"] == "admin" }
+      admin_models = admin_folder["item"].map { |i| i["name"] }
+      expect(admin_models).to include("posts")
+      expect(admin_models).not_to include("blogs")
+
+      public_folder = json["item"].find { |i| i["name"] == "public" }
+      public_models = public_folder["item"].map { |i| i["name"] }
+      expect(public_models).to include("blogs")
+      expect(public_models).not_to include("posts")
+    end
+
+    it "URLs use correct prefix per group" do
+      # tenant: :organization prefix
+      tenant_folder = json["item"].find { |i| i["name"] == "tenant" }
+      posts_folder = tenant_folder["item"].find { |i| i["name"] == "posts" }
+      raw_url = posts_folder["item"].find { |i| i["name"] == "Index" }["item"][0]["request"]["url"]["raw"]
+      expect(raw_url).to include("{{baseUrl}}/{{organization}}/posts")
+
+      # admin: admin prefix
+      admin_folder = json["item"].find { |i| i["name"] == "admin" }
+      admin_posts = admin_folder["item"].find { |i| i["name"] == "posts" }
+      admin_raw_url = admin_posts["item"].find { |i| i["name"] == "Index" }["item"][0]["request"]["url"]["raw"]
+      expect(admin_raw_url).to include("{{baseUrl}}/admin/posts")
+
+      # public: no prefix
+      public_folder = json["item"].find { |i| i["name"] == "public" }
+      public_blogs = public_folder["item"].find { |i| i["name"] == "blogs" }
+      public_raw_url = public_blogs["item"].find { |i| i["name"] == "Index" }["item"][0]["request"]["url"]["raw"]
+      expect(public_raw_url).to include("{{baseUrl}}/blogs")
+    end
+
+    it "soft deletes respected in group context" do
+      # Post has Discard::Model (soft deletes), verify in admin group
+      admin_folder = json["item"].find { |i| i["name"] == "admin" }
+      posts_folder = admin_folder["item"].find { |i| i["name"] == "posts" }
+      action_names = posts_folder["item"].map { |i| i["name"] }
+      expect(action_names).to include("Trashed", "Restore", "Force Delete")
+    end
+  end
+
+  # ==================================================================
+  # Edge case: group with no matching models is excluded
+  # ==================================================================
+
+  describe "group with no matching models" do
+    it "is excluded from the collection" do
+      json = run_export_with_config(
+        models: { posts: "Post" },
+        route_groups: {
+          tenant: { prefix: ":organization", models: :all },
+          driver: { prefix: "driver", models: [:nonexistent_model] }
+        }
+      )
+
+      item_names = json["item"].map { |i| i["name"] }
+      expect(item_names).to include("tenant")
+      expect(item_names).not_to include("driver")
+    end
+  end
+
+  # ==================================================================
+  # Edge case: Authentication folder always first with multiple groups
+  # ==================================================================
+
+  describe "authentication folder ordering" do
+    it "Authentication is first with multiple groups" do
+      json = run_export_with_config(
+        models: { posts: "Post", blogs: "Blog" },
+        route_groups: {
+          tenant: { prefix: ":organization", models: :all },
+          public: { prefix: "public", models: [:blogs] }
+        }
+      )
+
+      expect(json["item"][0]["name"]).to eq("Authentication")
+    end
+  end
+
+  # ==================================================================
+  # Collection variables and base URL
+  # ==================================================================
+
+  describe "collection variables" do
+    it "includes baseUrl and modelId" do
+      json = run_export_with_config(
+        models: { posts: "Post" },
+        route_groups: { default: { prefix: "", models: :all } }
+      )
+
+      vars = json["variable"].each_with_object({}) { |v, h| h[v["key"]] = v["value"] }
+      expect(vars["baseUrl"]).to eq("http://localhost:3000/api")
+      expect(vars).to have_key("modelId")
+      expect(vars).to have_key("token")
     end
   end
 end

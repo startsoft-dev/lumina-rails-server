@@ -27,22 +27,58 @@ module Lumina
         project_name = options[:project_name] || Rails.application.class.module_parent_name rescue "API"
 
         config = Lumina.config
-        has_tenant = config.has_tenant_group?
-        tenant_prefix = has_tenant ? config.route_groups[:tenant][:prefix] : nil
-        needs_org_prefix = has_tenant && tenant_prefix.present? && tenant_prefix.include?(":")
+        route_groups = config.route_groups
+        all_models = config.models
 
-        variables = build_collection_variables(base_url, needs_org_prefix)
+        has_multiple_groups = route_groups.size > 1
+        needs_org_variable = any_group_has_org_prefix?(route_groups)
+
+        variables = build_collection_variables(base_url, needs_org_variable)
         items = []
 
         items << build_auth_folder
-        items << build_invitation_folder(needs_org_prefix) if has_tenant
 
-        config.route_groups.each do |group_name, group_config|
-          group_models = config.models_for_group(group_name)
-          group_prefix = group_config[:prefix]
+        if has_multiple_groups
+          # Multiple groups: Project -> Auth, GroupName -> resources
+          route_groups.each do |group_name, group_config|
+            group_models = resolve_models_for_group(all_models, config, group_name)
+            next if group_models.empty?
 
+            group_prefix = group_config[:prefix] || ""
+
+            group_items = []
+            group_models.each do |slug|
+              model_class_name = all_models[slug]
+              model_class = begin
+                model_class_name.constantize
+              rescue NameError
+                say "Model class does not exist: #{model_class_name}", :red
+                next
+              end
+
+              model_meta = introspect_model(model_class, slug)
+              group_items << {
+                name: slug.to_s,
+                item: build_action_folders(slug, model_meta, group_prefix)
+              }
+            end
+
+            if group_items.any?
+              items << {
+                name: group_name.to_s,
+                item: group_items
+              }
+            end
+          end
+        else
+          # Single group: Project -> Auth, resources (flat, backward compatible)
+          group_config = route_groups.values.first || {}
+          group_prefix = group_config[:prefix] || ""
+          group_name = route_groups.keys.first
+
+          group_models = resolve_models_for_group(all_models, config, group_name)
           group_models.each do |slug|
-            model_class_name = config.models[slug]
+            model_class_name = all_models[slug]
             model_class = begin
               model_class_name.constantize
             rescue NameError
@@ -51,9 +87,8 @@ module Lumina
             end
 
             model_meta = introspect_model(model_class, slug)
-            folder_name = config.route_groups.size > 1 ? "#{group_name}/#{slug}" : slug.to_s
             items << {
-              name: folder_name,
+              name: slug.to_s,
               item: build_action_folders(slug, model_meta, group_prefix)
             }
           end
@@ -75,6 +110,18 @@ module Lumina
       end
 
       private
+
+      def any_group_has_org_prefix?(route_groups)
+        route_groups.any? { |_name, cfg| prefix_has_param?(cfg[:prefix] || "") }
+      end
+
+      def prefix_has_param?(prefix)
+        prefix.present? && prefix.include?(":")
+      end
+
+      def resolve_models_for_group(all_models, config, group_name)
+        config.models_for_group(group_name)
+      end
 
       def build_collection_variables(base_url, needs_org_prefix)
         vars = [
@@ -118,24 +165,6 @@ module Lumina
         }
       end
 
-      def build_invitation_folder(needs_org_prefix)
-        base = needs_org_prefix ? "{{baseUrl}}/{{organization}}/invitations" : "{{baseUrl}}/invitations"
-        headers = default_headers
-        json_headers = headers + [{ key: "Content-Type", value: "application/json" }]
-
-        {
-          name: "Invitations",
-          item: [
-            request_item("List invitations", "GET", base, {}, headers),
-            request_item("List pending", "GET", base, { status: "pending" }, headers),
-            request_item("Create invitation", "POST", base, {}, json_headers,
-                          { email: "user@example.com", role_id: 1 }),
-            request_item("Resend invitation", "POST", "#{base}/{{modelId}}/resend", {}, headers),
-            request_item("Cancel invitation", "DELETE", "#{base}/{{modelId}}", {}, headers)
-          ]
-        }
-      end
-
       def introspect_model(model_class, slug)
         {
           slug: slug,
@@ -152,9 +181,7 @@ module Lumina
 
       def build_action_folders(slug, meta, group_prefix)
         folders = []
-        prefix_part = group_prefix.present? ? group_prefix.gsub(/:[a-z_]+/, "{{organization}}") : nil
-        base = [prefix_part, slug.to_s].compact.reject(&:empty?).join("/")
-        base = "{{baseUrl}}/#{base}"
+        base = base_path(slug, group_prefix)
         except = meta[:except_actions]
 
         folders << { name: "Index", item: build_index_requests(base, slug, meta) } unless except.include?("index")
@@ -170,6 +197,16 @@ module Lumina
         end
 
         folders
+      end
+
+      def base_path(slug, group_prefix)
+        if group_prefix.present?
+          # Replace :param route params with {{param}} Postman variables
+          postman_prefix = group_prefix.gsub(/:(\w+)/, '{{\1}}')
+          "{{baseUrl}}/#{postman_prefix}/#{slug}"
+        else
+          "{{baseUrl}}/#{slug}"
+        end
       end
 
       def build_index_requests(base, slug, meta)
