@@ -40,9 +40,13 @@ module Lumina
 
     class_methods do
       def lumina_auto_scope_class
-        return @lumina_auto_scope_class if defined?(@lumina_auto_scope_class)
+        return @lumina_auto_scope_class if instance_variable_defined?(:@lumina_auto_scope_class)
 
-        @lumina_auto_scope_class = find_auto_scope_class
+        result = find_auto_scope_class
+        # Only cache non-nil results to avoid permanently caching nil
+        # when the scope class hasn't been autoloaded yet (Zeitwerk)
+        @lumina_auto_scope_class = result if result
+        result
       end
 
       private
