@@ -7,12 +7,15 @@ module Lumina
   # Looks for a scope class at `ModelScopes::{ModelName}Scope`
   # (e.g., `ModelScopes::PostScope` for `Post` model).
   #
+  # The scope class must implement `self.apply(relation)` which receives
+  # the current ActiveRecord relation and returns a modified relation.
+  #
   # Usage:
   #   class Post < ApplicationRecord
   #     include Lumina::HasAutoScope
   #   end
   #
-  #   # app/model_scopes/post_scope.rb
+  #   # app/models/scopes/post_scope.rb
   #   module ModelScopes
   #     class PostScope
   #       def self.apply(scope)
@@ -24,20 +27,32 @@ module Lumina
     extend ActiveSupport::Concern
 
     included do
-      scope_class = find_auto_scope_class
-      if scope_class
-        default_scope lambda {
-          scope_class.apply(all)
-        }
-      end
+      default_scope lambda {
+        model = is_a?(ActiveRecord::Relation) ? self.klass : self
+        if model.respond_to?(:lumina_auto_scope_class)
+          scope_class = model.lumina_auto_scope_class
+          scope_class ? scope_class.apply(all) : all
+        else
+          all
+        end
+      }
     end
 
     class_methods do
+      def lumina_auto_scope_class
+        return @lumina_auto_scope_class if defined?(@lumina_auto_scope_class)
+
+        @lumina_auto_scope_class = find_auto_scope_class
+      end
+
+      private
+
       def find_auto_scope_class
-        scope_name = "ModelScopes::#{name}Scope"
-        scope_name.constantize
-      rescue NameError
-        nil
+        return nil if name.nil?
+
+        model_name = name.demodulize
+        scope_name = "ModelScopes::#{model_name}Scope"
+        scope_name.safe_constantize
       end
     end
   end
