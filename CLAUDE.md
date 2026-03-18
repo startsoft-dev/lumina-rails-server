@@ -75,7 +75,7 @@ This library provides the following features. When modifying or extending any of
 | 18 | **Audit Trail** (logs all CRUD events with old/new values, user, IP, org via RequestStore) | `has_audit_trail.rb`, `audit_log.rb` |
 | 19 | **Nested Operations** (POST /nested, atomic transactions, $N.field references) | `resources_controller.rb` |
 | 20 | **Invitations** (token-based, create/resend/cancel/accept, configurable expiry) | `invitations_controller.rb`, `organization_invitation.rb` |
-| 21 | **Hidden Columns** (base + model-level `lumina_additional_hidden` + policy-level dynamic hiding) | `hidable_columns.rb` |
+| 21 | **Hidden Columns** (base + model-level `lumina_additional_hidden` + policy-level dynamic hiding + `as_lumina_json` for computed attributes) | `hidable_columns.rb` |
 | 22 | **Auto-Scope Discovery** (naming convention: `ModelScopes::{Model}Scope`) | `has_auto_scope.rb` |
 | 23 | **UUID Primary Keys** | `has_uuid.rb` |
 | 24 | **Middleware Support** (global per model `lumina_middleware` + per action `lumina_middleware_actions`) | `resources_controller.rb` |

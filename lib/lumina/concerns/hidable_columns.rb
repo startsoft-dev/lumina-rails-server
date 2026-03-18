@@ -14,6 +14,19 @@ module Lumina
   #     lumina_additional_hidden :secret_field, :internal_notes
   #   end
   #
+  # Adding computed attributes to JSON responses:
+  #   class Comment < Lumina::LuminaModel
+  #     def author_name
+  #       user&.name || 'Anonymous'
+  #     end
+  #
+  #     def as_lumina_json
+  #       super.merge(
+  #         'author_name' => author_name
+  #       )
+  #     end
+  #   end
+  #
   # Policy-based hiding:
   #   class UserPolicy < Lumina::ResourcePolicy
   #     def hidden_attributes_for_show(user)
@@ -48,12 +61,13 @@ module Lumina
       end
     end
 
-    # Get the list of columns to hide for a given user.
+    # Get the list of columns to hide for the current user.
     # Merges base + static + policy-defined hidden columns.
+    # Resolves the user from RequestStore automatically.
     #
-    # @param user [Object, nil] The authenticated user
     # @return [Array<String>] Column names to hide
-    def hidden_columns_for(user)
+    def hidden_columns_for(user = nil)
+      user ||= lumina_current_user
       columns = BASE_HIDDEN_COLUMNS.dup
       columns.concat(additional_hidden_columns)
       columns.concat(policy_hidden_columns(user))
@@ -62,13 +76,24 @@ module Lumina
 
     # Serialize to JSON excluding hidden columns and respecting policy whitelist.
     #
-    # Computed attributes (defined via +as_json+ overrides) are fully supported:
-    # they can be hidden via +hidden_attributes_for_show+ or filtered via
-    # +permitted_attributes_for_show+ just like database columns.
+    # The current user is resolved automatically from RequestStore — no need to
+    # pass it as a parameter. Override this method in your model to add computed
+    # attributes to the JSON response:
     #
-    # @param user [Object, nil] The authenticated user
+    #   def as_lumina_json
+    #     super.merge(
+    #       'full_name' => "#{first_name} #{last_name}",
+    #       'is_overdue' => due_date&.past?
+    #     )
+    #   end
+    #
+    # Computed attributes added via +merge+ are subject to policy-level
+    # blacklist (+hidden_attributes_for_show+) and whitelist
+    # (+permitted_attributes_for_show+) just like database columns.
+    #
     # @return [Hash]
-    def as_lumina_json(user = nil)
+    def as_lumina_json
+      user = lumina_current_user
       hidden = hidden_columns_for(user)
       result = as_json(except: hidden)
 
@@ -89,6 +114,12 @@ module Lumina
     end
 
     private
+
+    # Resolves the current user from RequestStore.
+    # @return [Object, nil]
+    def lumina_current_user
+      RequestStore.store[:lumina_current_user] if defined?(RequestStore)
+    end
 
     # Returns the permitted attributes list from the policy, or nil if no policy.
     def policy_permitted_attributes(user)

@@ -578,7 +578,7 @@ module Lumina
 
     def serialize_record(record)
       if record.respond_to?(:as_lumina_json)
-        record.as_lumina_json(current_user)
+        record.as_lumina_json
       else
         record.as_json
       end

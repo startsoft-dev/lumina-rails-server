@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
+require "request_store"
 
 # --------------------------------------------------------------------------
 # Test Models
@@ -42,6 +43,10 @@ class HidablePostWithAdditionalPolicy < Lumina::ResourcePolicy
 end
 
 RSpec.describe Lumina::HidableColumns do
+  before(:each) do
+    RequestStore.store[:lumina_current_user] = nil
+  end
+
   # ------------------------------------------------------------------
   # Base hidden columns
   # ------------------------------------------------------------------
@@ -63,13 +68,13 @@ RSpec.describe Lumina::HidableColumns do
   describe "#hidden_columns_for" do
     it "returns base hidden columns for model without policy" do
       post = HidablePost.create!(title: "Test", content: "Content")
-      hidden = post.hidden_columns_for(nil)
+      hidden = post.hidden_columns_for
       expect(hidden).to include("password", "password_digest", "created_at", "updated_at")
     end
 
     it "includes additional hidden columns" do
       post = HidablePostWithAdditional.create!(title: "Test", content: "Content")
-      hidden = post.hidden_columns_for(nil)
+      hidden = post.hidden_columns_for
       expect(hidden).to include("status", "is_published")
     end
 
@@ -80,7 +85,7 @@ RSpec.describe Lumina::HidableColumns do
       )
 
       post = HidablePost.create!(title: "Test", content: "Content")
-      hidden = post.hidden_columns_for(nil)
+      hidden = post.hidden_columns_for
       expect(hidden).to include("status", "is_published", "content")
     end
 
@@ -90,8 +95,9 @@ RSpec.describe Lumina::HidableColumns do
       )
 
       admin = User.create!(id: 1, name: "Admin", email: "admin-hid@test.com")
+      RequestStore.store[:lumina_current_user] = admin
       post = HidablePost.create!(title: "Test", content: "Content")
-      hidden = post.hidden_columns_for(admin)
+      hidden = post.hidden_columns_for
 
       # Admin sees everything — policy returns []
       expect(hidden).not_to include("status", "is_published", "content")
@@ -103,7 +109,7 @@ RSpec.describe Lumina::HidableColumns do
       )
 
       post = HidablePostWithAdditional.create!(title: "Test", content: "Content")
-      hidden = post.hidden_columns_for(nil)
+      hidden = post.hidden_columns_for
       expect(hidden).to eq(hidden.uniq)
     end
   end
@@ -115,7 +121,7 @@ RSpec.describe Lumina::HidableColumns do
   describe "#as_lumina_json" do
     it "excludes hidden columns from JSON output" do
       post = HidablePost.create!(title: "Test", content: "Visible", status: "published")
-      json = post.as_lumina_json(nil)
+      json = post.as_lumina_json
 
       # Base hidden columns (created_at, updated_at, etc.) should be removed
       expect(json).not_to have_key("created_at")
@@ -130,10 +136,30 @@ RSpec.describe Lumina::HidableColumns do
 
     it "includes additional hidden columns in exclusion" do
       post = HidablePostWithAdditional.create!(title: "Test", content: "Visible", status: "published")
-      json = post.as_lumina_json(nil)
+      json = post.as_lumina_json
 
       expect(json).not_to have_key("status")
       expect(json).not_to have_key("is_published")
+    end
+
+    it "resolves user from RequestStore automatically" do
+      allow(Pundit::PolicyFinder).to receive(:new).and_return(
+        double(policy: HidablePostPolicy)
+      )
+
+      post = HidablePost.create!(title: "Test", content: "Content", status: "draft")
+
+      # Guest — status, is_published, content hidden
+      json = post.as_lumina_json
+      expect(json).not_to have_key("status")
+      expect(json).not_to have_key("content")
+
+      # Admin — sees everything
+      admin = User.create!(id: 1, name: "Admin", email: "admin-rs@test.com")
+      RequestStore.store[:lumina_current_user] = admin
+      json = post.as_lumina_json
+      expect(json).to have_key("status")
+      expect(json).to have_key("content")
     end
   end
 
@@ -145,7 +171,7 @@ RSpec.describe Lumina::HidableColumns do
     it "handles missing policy gracefully" do
       post = HidablePost.create!(title: "Test", content: "Content")
       # With no policy found, should still return base + additional
-      expect { post.hidden_columns_for(nil) }.not_to raise_error
+      expect { post.hidden_columns_for }.not_to raise_error
     end
 
     it "handles policy without hidden_attributes_for_show method" do
@@ -154,7 +180,7 @@ RSpec.describe Lumina::HidableColumns do
       )
 
       post = HidablePost.create!(title: "Test", content: "Content")
-      hidden = post.hidden_columns_for(nil)
+      hidden = post.hidden_columns_for
       expect(hidden).to include("password") # base columns still present
     end
 
@@ -171,7 +197,7 @@ RSpec.describe Lumina::HidableColumns do
       )
 
       post = HidablePost.create!(title: "Test", content: "Content")
-      hidden = post.hidden_columns_for(nil)
+      hidden = post.hidden_columns_for
       # Should fall back to empty array from rescue
       expect(hidden).to include("password") # base columns still present
     end
@@ -190,7 +216,7 @@ RSpec.describe Lumina::HidableColumns do
 
       post = HidablePost.create!(title: "Test", content: "Content")
       # as_lumina_json calls policy_permitted_attributes which should rescue
-      json = post.as_lumina_json(nil)
+      json = post.as_lumina_json
       expect(json).to have_key("id")
     end
   end
@@ -208,7 +234,7 @@ RSpec.describe Lumina::HidableColumns do
         super.merge("days_until_expiry" => 78, "risk_score" => "high")
       end
 
-      json = post.as_lumina_json(nil)
+      json = post.as_lumina_json
       expect(json).to have_key("days_until_expiry")
       expect(json["days_until_expiry"]).to eq(78)
       expect(json).to have_key("risk_score")
@@ -241,7 +267,7 @@ RSpec.describe Lumina::HidableColumns do
       end
 
       # Guest: risk_score and internal_rating hidden
-      json = post.as_lumina_json(nil)
+      json = post.as_lumina_json
       expect(json).to have_key("days_until_expiry")
       expect(json["days_until_expiry"]).to eq(78)
       expect(json).not_to have_key("risk_score")
@@ -250,7 +276,8 @@ RSpec.describe Lumina::HidableColumns do
 
       # Admin sees everything
       admin = User.create!(id: 1, name: "Admin", email: "admin-comp@test.com")
-      json = post.as_lumina_json(admin)
+      RequestStore.store[:lumina_current_user] = admin
+      json = post.as_lumina_json
       expect(json).to have_key("risk_score")
       expect(json).to have_key("internal_rating")
       expect(json).to have_key("days_until_expiry")
@@ -276,7 +303,7 @@ RSpec.describe Lumina::HidableColumns do
       end
 
       # Guest: only id + title permitted, computed attributes excluded
-      json = post.as_lumina_json(nil)
+      json = post.as_lumina_json
       expect(json).to have_key("id")
       expect(json).to have_key("title")
       expect(json).not_to have_key("days_until_expiry")
@@ -284,9 +311,28 @@ RSpec.describe Lumina::HidableColumns do
 
       # Auth user: sees everything including computed
       user = User.create!(id: 5, name: "User", email: "user-comp@test.com")
-      json = post.as_lumina_json(user)
+      RequestStore.store[:lumina_current_user] = user
+      json = post.as_lumina_json
       expect(json).to have_key("days_until_expiry")
       expect(json).to have_key("risk_score")
+    end
+
+    it "model can override as_lumina_json to add custom attributes" do
+      post = HidablePost.create!(title: "Test", content: "Content")
+
+      def post.custom_value
+        "hello"
+      end
+
+      def post.as_lumina_json
+        super.merge("custom_value" => custom_value)
+      end
+
+      json = post.as_lumina_json
+      expect(json).to have_key("custom_value")
+      expect(json["custom_value"]).to eq("hello")
+      expect(json).to have_key("title")
+      expect(json).not_to have_key("created_at") # still hidden
     end
   end
 
@@ -311,7 +357,7 @@ RSpec.describe Lumina::HidableColumns do
       )
 
       post = HidablePost.create!(title: "Test", content: "Content", status: "draft")
-      json = post.as_lumina_json(nil) # guest user
+      json = post.as_lumina_json # guest user
 
       expect(json).to have_key("id")
       expect(json).to have_key("title")
