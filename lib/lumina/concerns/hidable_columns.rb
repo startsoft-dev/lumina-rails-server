@@ -20,10 +20,10 @@ module Lumina
   #       user&.name || 'Anonymous'
   #     end
   #
-  #     def as_lumina_json
-  #       super.merge(
+  #     def lumina_computed_attributes
+  #       {
   #         'author_name' => author_name
-  #       )
+  #       }
   #     end
   #   end
   #
@@ -76,20 +76,12 @@ module Lumina
 
     # Serialize to JSON excluding hidden columns and respecting policy whitelist.
     #
-    # The current user is resolved automatically from RequestStore — no need to
-    # pass it as a parameter. Override this method in your model to add computed
-    # attributes to the JSON response:
+    # The current user is resolved automatically from RequestStore. Policy
+    # filtering (blacklist + whitelist) is applied AFTER computed attributes
+    # are merged, so computed attributes are always subject to policy control.
     #
-    #   def as_lumina_json
-    #     super.merge(
-    #       'full_name' => "#{first_name} #{last_name}",
-    #       'is_overdue' => due_date&.past?
-    #     )
-    #   end
-    #
-    # Computed attributes added via +merge+ are subject to policy-level
-    # blacklist (+hidden_attributes_for_show+) and whitelist
-    # (+permitted_attributes_for_show+) just like database columns.
+    # Do NOT override this method. Override +lumina_computed_attributes+ instead
+    # to add computed/virtual attributes to the JSON response.
     #
     # @return [Hash]
     def as_lumina_json
@@ -97,8 +89,12 @@ module Lumina
       hidden = hidden_columns_for(user)
       result = as_json(except: hidden)
 
-      # Re-apply blacklist to the final hash. This catches computed attributes
-      # added via as_json overrides that bypass the :except option.
+      # Merge computed attributes from model BEFORE applying policy filtering
+      computed = lumina_computed_attributes
+      result.merge!(computed) if computed.is_a?(Hash) && computed.any?
+
+      # Apply blacklist to the final hash (covers DB columns from as_json
+      # overrides AND computed attributes from lumina_computed_attributes)
       hidden_set = Set.new(hidden)
       result.reject! { |key, _| hidden_set.include?(key) }
 
@@ -111,6 +107,25 @@ module Lumina
       end
 
       result
+    end
+
+    # Override this method in your model to add computed/virtual attributes
+    # to the JSON response. These attributes are subject to policy-level
+    # blacklist (+hidden_attributes_for_show+) and whitelist
+    # (+permitted_attributes_for_show+) just like database columns.
+    #
+    # @example
+    #   def lumina_computed_attributes
+    #     {
+    #       'full_name' => "#{first_name} #{last_name}",
+    #       'is_overdue' => due_date&.past?,
+    #       'days_until_expiry' => expiry_date ? (expiry_date - Date.current).to_i : nil
+    #     }
+    #   end
+    #
+    # @return [Hash] key-value pairs to merge into the JSON response
+    def lumina_computed_attributes
+      {}
     end
 
     private

@@ -19,6 +19,26 @@ class HidablePostWithAdditional < ActiveRecord::Base
   lumina_additional_hidden :status, :is_published
 end
 
+class HidablePostWithComputed < ActiveRecord::Base
+  include Lumina::HidableColumns
+  self.table_name = "posts"
+
+  def days_until_expiry
+    42
+  end
+
+  def secret_score
+    "classified"
+  end
+
+  def lumina_computed_attributes
+    {
+      'days_until_expiry' => days_until_expiry,
+      'secret_score' => secret_score
+    }
+  end
+end
+
 # --------------------------------------------------------------------------
 # Test Policies
 # --------------------------------------------------------------------------
@@ -79,7 +99,6 @@ RSpec.describe Lumina::HidableColumns do
     end
 
     it "includes policy-based hidden columns for guest" do
-      # Stub Pundit to return our test policy
       allow(Pundit::PolicyFinder).to receive(:new).and_return(
         double(policy: HidablePostPolicy)
       )
@@ -99,7 +118,6 @@ RSpec.describe Lumina::HidableColumns do
       post = HidablePost.create!(title: "Test", content: "Content")
       hidden = post.hidden_columns_for
 
-      # Admin sees everything — policy returns []
       expect(hidden).not_to include("status", "is_published", "content")
     end
 
@@ -123,12 +141,10 @@ RSpec.describe Lumina::HidableColumns do
       post = HidablePost.create!(title: "Test", content: "Visible", status: "published")
       json = post.as_lumina_json
 
-      # Base hidden columns (created_at, updated_at, etc.) should be removed
       expect(json).not_to have_key("created_at")
       expect(json).not_to have_key("updated_at")
       expect(json).not_to have_key("discarded_at")
 
-      # Non-hidden columns should be present
       expect(json).to have_key("id")
       expect(json).to have_key("title")
       expect(json["title"]).to eq("Test")
@@ -164,13 +180,138 @@ RSpec.describe Lumina::HidableColumns do
   end
 
   # ------------------------------------------------------------------
+  # lumina_computed_attributes
+  # ------------------------------------------------------------------
+
+  describe "#lumina_computed_attributes" do
+    it "returns empty hash by default" do
+      post = HidablePost.create!(title: "Test", content: "Content")
+      expect(post.lumina_computed_attributes).to eq({})
+    end
+
+    it "includes computed attributes in as_lumina_json output" do
+      post = HidablePostWithComputed.create!(title: "Test", content: "Content")
+      json = post.as_lumina_json
+
+      expect(json).to have_key("days_until_expiry")
+      expect(json["days_until_expiry"]).to eq(42)
+      expect(json).to have_key("secret_score")
+      expect(json["secret_score"]).to eq("classified")
+      expect(json).to have_key("title")
+    end
+
+    it "policy blacklist hides computed attributes" do
+      policy_class = Class.new(Lumina::ResourcePolicy) do
+        self.resource_slug = "posts"
+
+        def hidden_attributes_for_show(user)
+          return ["secret_score"] unless user
+          []
+        end
+      end
+
+      allow(Pundit::PolicyFinder).to receive(:new).and_return(
+        double(policy: policy_class)
+      )
+
+      post = HidablePostWithComputed.create!(title: "Test", content: "Content")
+
+      # Guest: secret_score hidden by policy
+      json = post.as_lumina_json
+      expect(json).to have_key("days_until_expiry")
+      expect(json).not_to have_key("secret_score")
+
+      # Auth user: sees everything
+      user = User.create!(id: 2, name: "User", email: "user-bl@test.com")
+      RequestStore.store[:lumina_current_user] = user
+      json = post.as_lumina_json
+      expect(json).to have_key("secret_score")
+      expect(json).to have_key("days_until_expiry")
+    end
+
+    it "policy whitelist filters computed attributes" do
+      policy_class = Class.new(Lumina::ResourcePolicy) do
+        self.resource_slug = "posts"
+
+        def permitted_attributes_for_show(user)
+          return ["id", "title", "days_until_expiry"] unless user
+          ["*"]
+        end
+      end
+
+      allow(Pundit::PolicyFinder).to receive(:new).and_return(
+        double(policy: policy_class)
+      )
+
+      post = HidablePostWithComputed.create!(title: "Test", content: "Content")
+
+      # Guest: only id, title, days_until_expiry permitted
+      json = post.as_lumina_json
+      expect(json).to have_key("id")
+      expect(json).to have_key("title")
+      expect(json).to have_key("days_until_expiry")
+      expect(json).not_to have_key("secret_score")
+      expect(json).not_to have_key("content")
+
+      # Auth user: sees everything
+      user = User.create!(id: 3, name: "User", email: "user-wl@test.com")
+      RequestStore.store[:lumina_current_user] = user
+      json = post.as_lumina_json
+      expect(json).to have_key("secret_score")
+      expect(json).to have_key("days_until_expiry")
+    end
+
+    it "computed attributes not in whitelist are excluded (security)" do
+      policy_class = Class.new(Lumina::ResourcePolicy) do
+        self.resource_slug = "posts"
+
+        def permitted_attributes_for_show(user)
+          ["id", "title"] # secret_score and days_until_expiry NOT listed
+        end
+      end
+
+      allow(Pundit::PolicyFinder).to receive(:new).and_return(
+        double(policy: policy_class)
+      )
+
+      post = HidablePostWithComputed.create!(title: "Test", content: "Content")
+      json = post.as_lumina_json
+
+      expect(json).to have_key("id")
+      expect(json).to have_key("title")
+      expect(json).not_to have_key("days_until_expiry")
+      expect(json).not_to have_key("secret_score")
+    end
+
+    it "computed attributes in blacklist are excluded (security)" do
+      policy_class = Class.new(Lumina::ResourcePolicy) do
+        self.resource_slug = "posts"
+
+        def hidden_attributes_for_show(user)
+          ["secret_score", "days_until_expiry"]
+        end
+      end
+
+      allow(Pundit::PolicyFinder).to receive(:new).and_return(
+        double(policy: policy_class)
+      )
+
+      post = HidablePostWithComputed.create!(title: "Test", content: "Content")
+      json = post.as_lumina_json
+
+      expect(json).to have_key("title")
+      expect(json).not_to have_key("secret_score")
+      expect(json).not_to have_key("days_until_expiry")
+    end
+  end
+
+  # ------------------------------------------------------------------
   # Edge cases
   # ------------------------------------------------------------------
 
   describe "edge cases" do
     it "handles missing policy gracefully" do
       post = HidablePost.create!(title: "Test", content: "Content")
-      # With no policy found, should still return base + additional
       expect { post.hidden_columns_for }.not_to raise_error
     end
 
@@ -181,7 +322,7 @@ RSpec.describe Lumina::HidableColumns do
 
       post = HidablePost.create!(title: "Test", content: "Content")
       hidden = post.hidden_columns_for
-      expect(hidden).to include("password") # base columns still present
+      expect(hidden).to include("password")
     end
 
     it "handles policy that raises an error in policy_hidden_columns" do
@@ -198,8 +339,7 @@ RSpec.describe Lumina::HidableColumns do
 
       post = HidablePost.create!(title: "Test", content: "Content")
       hidden = post.hidden_columns_for
-      # Should fall back to empty array from rescue
-      expect(hidden).to include("password") # base columns still present
+      expect(hidden).to include("password")
     end
 
     it "handles policy that raises an error in policy_permitted_attributes" do
@@ -215,41 +355,28 @@ RSpec.describe Lumina::HidableColumns do
       )
 
       post = HidablePost.create!(title: "Test", content: "Content")
-      # as_lumina_json calls policy_permitted_attributes which should rescue
       json = post.as_lumina_json
       expect(json).to have_key("id")
+    end
+
+    it "handles lumina_computed_attributes returning non-hash gracefully" do
+      post = HidablePost.create!(title: "Test", content: "Content")
+      allow(post).to receive(:lumina_computed_attributes).and_return(nil)
+      expect { post.as_lumina_json }.not_to raise_error
     end
   end
 
   # ------------------------------------------------------------------
-  # Computed (virtual) attributes
+  # Backward compat: as_json overrides still work with policy
   # ------------------------------------------------------------------
 
-  describe "computed attributes" do
-    it "includes computed attributes in as_lumina_json output" do
-      post = HidablePost.create!(title: "Test", content: "Content")
-
-      # Override as_json to include a computed attribute
-      def post.as_json(options = {})
-        super.merge("days_until_expiry" => 78, "risk_score" => "high")
-      end
-
-      json = post.as_lumina_json
-      expect(json).to have_key("days_until_expiry")
-      expect(json["days_until_expiry"]).to eq(78)
-      expect(json).to have_key("risk_score")
-      expect(json["risk_score"]).to eq("high")
-      expect(json).to have_key("title")
-    end
-
-    it "policy can hide computed attributes via blacklist" do
+  describe "as_json overrides" do
+    it "computed attributes via as_json are also filtered by policy" do
       policy_class = Class.new(Lumina::ResourcePolicy) do
         self.resource_slug = "posts"
 
         def hidden_attributes_for_show(user)
-          return ["risk_score", "internal_rating"] unless user
-          return [] if user.id == 1
-          ["internal_rating"]
+          ["risk_score"]
         end
       end
 
@@ -259,80 +386,12 @@ RSpec.describe Lumina::HidableColumns do
 
       post = HidablePost.create!(title: "Test", content: "Content")
       def post.as_json(options = {})
-        super.merge(
-          "days_until_expiry" => 78,
-          "risk_score" => "high",
-          "internal_rating" => "A+"
-        )
+        super.merge("risk_score" => "high", "days_left" => 10)
       end
 
-      # Guest: risk_score and internal_rating hidden
       json = post.as_lumina_json
-      expect(json).to have_key("days_until_expiry")
-      expect(json["days_until_expiry"]).to eq(78)
       expect(json).not_to have_key("risk_score")
-      expect(json).not_to have_key("internal_rating")
-      expect(json).to have_key("title")
-
-      # Admin sees everything
-      admin = User.create!(id: 1, name: "Admin", email: "admin-comp@test.com")
-      RequestStore.store[:lumina_current_user] = admin
-      json = post.as_lumina_json
-      expect(json).to have_key("risk_score")
-      expect(json).to have_key("internal_rating")
-      expect(json).to have_key("days_until_expiry")
-    end
-
-    it "policy can hide computed attributes via whitelist" do
-      policy_class = Class.new(Lumina::ResourcePolicy) do
-        self.resource_slug = "posts"
-
-        def permitted_attributes_for_show(user)
-          return ["id", "title"] unless user
-          ["*"]
-        end
-      end
-
-      allow(Pundit::PolicyFinder).to receive(:new).and_return(
-        double(policy: policy_class)
-      )
-
-      post = HidablePost.create!(title: "Test", content: "Content")
-      def post.as_json(options = {})
-        super.merge("days_until_expiry" => 78, "risk_score" => "high")
-      end
-
-      # Guest: only id + title permitted, computed attributes excluded
-      json = post.as_lumina_json
-      expect(json).to have_key("id")
-      expect(json).to have_key("title")
-      expect(json).not_to have_key("days_until_expiry")
-      expect(json).not_to have_key("risk_score")
-
-      # Auth user: sees everything including computed
-      user = User.create!(id: 5, name: "User", email: "user-comp@test.com")
-      RequestStore.store[:lumina_current_user] = user
-      json = post.as_lumina_json
-      expect(json).to have_key("days_until_expiry")
-      expect(json).to have_key("risk_score")
-    end
-
-    it "model can override as_lumina_json to add custom attributes" do
-      post = HidablePost.create!(title: "Test", content: "Content")
-
-      def post.custom_value
-        "hello"
-      end
-
-      def post.as_lumina_json
-        super.merge("custom_value" => custom_value)
-      end
-
-      json = post.as_lumina_json
-      expect(json).to have_key("custom_value")
-      expect(json["custom_value"]).to eq("hello")
-      expect(json).to have_key("title")
-      expect(json).not_to have_key("created_at") # still hidden
+      expect(json).to have_key("days_left")
     end
   end
 
@@ -341,7 +400,6 @@ RSpec.describe Lumina::HidableColumns do
   # ------------------------------------------------------------------
 
   describe "permitted_attributes_for_show filtering" do
-    # Create a policy that uses permitted_attributes_for_show whitelist
     it "hides columns not in permitted list" do
       policy_class = Class.new(Lumina::ResourcePolicy) do
         self.resource_slug = "posts"
@@ -357,7 +415,7 @@ RSpec.describe Lumina::HidableColumns do
       )
 
       post = HidablePost.create!(title: "Test", content: "Content", status: "draft")
-      json = post.as_lumina_json # guest user
+      json = post.as_lumina_json
 
       expect(json).to have_key("id")
       expect(json).to have_key("title")
