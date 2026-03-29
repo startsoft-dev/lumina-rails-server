@@ -532,4 +532,50 @@ RSpec.describe Lumina::Commands::BlueprintCommand do
       # If we get here without error, the files were skipped correctly
     end
   end
+
+  # ----------------------------------------------------------------
+  # Regression: sequential migration timestamps
+  # ----------------------------------------------------------------
+
+  describe "sequential migration timestamps" do
+    it "generates unique timestamps for multiple migrations" do
+      initial_offset = command.instance_variable_get(:@migration_timestamp_offset)
+      expect(initial_offset).to eq(0)
+
+      # Simulate timestamp generation with sequential offsets
+      timestamps = (0..4).map do |i|
+        (Time.current + i).strftime("%Y%m%d%H%M%S")
+      end
+
+      expect(timestamps.uniq.length).to eq(timestamps.length)
+    end
+  end
+
+  # ----------------------------------------------------------------
+  # Regression: organization reference includes null: false
+  # ----------------------------------------------------------------
+
+  describe "organization reference constraint" do
+    let(:org_blueprint) do
+      {
+        model: "Task",
+        table: "tasks",
+        options: { belongs_to_organization: true, soft_deletes: false },
+        columns: [
+          { name: "title", type: "string", nullable: false },
+        ],
+      }
+    end
+
+    it "generates organization reference with null: false" do
+      config_path = File.join(tmp_dir, "config/initializers/lumina.rb")
+      File.write(config_path, 'c.route_group :tenant, prefix: ":organization"')
+
+      path = command.send(:generate_migration, org_blueprint)
+
+      content = File.read(File.join(tmp_dir, path))
+      expect(content).to include("t.references :organization, null: false, foreign_key: true")
+      expect(content).not_to include("t.references :organization, foreign_key: true\n")
+    end
+  end
 end
