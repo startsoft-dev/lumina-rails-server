@@ -186,7 +186,7 @@ RSpec.describe Lumina::Commands::BlueprintCommand do
       path = command.send(:generate_migration, blueprint)
 
       content = File.read(File.join(tmp_dir, path))
-      expect(content).to include("t.references :organization, foreign_key: true")
+      expect(content).to include("t.references :organization, null: false, foreign_key: true")
     end
 
     it "uses to_table when FK column name does not match model table" do

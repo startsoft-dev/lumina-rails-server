@@ -29,6 +29,7 @@ module Lumina
           skip_tests: false,
           skip_seeders: false
         }
+        @migration_timestamp_offset = 0
       end
 
       def perform
@@ -300,14 +301,15 @@ module Lumina
         soft_deletes = blueprint[:options][:soft_deletes]
         belongs_to_org = blueprint[:options][:belongs_to_organization]
 
-        timestamp = Time.current.strftime("%Y%m%d%H%M%S")
+        timestamp = (Time.current + @migration_timestamp_offset).strftime("%Y%m%d%H%M%S")
+        @migration_timestamp_offset += 1
         class_name = "Create#{blueprint[:model].pluralize}"
 
         lines = []
 
         # Add organization reference if belongs_to_organization
         if belongs_to_org && multi_tenant_enabled?
-          lines << "t.references :organization, foreign_key: true"
+          lines << "t.references :organization, null: false, foreign_key: true"
         end
 
         columns.each do |col|
